@@ -1,0 +1,5 @@
+torch
+requests
+transformers
+Pillow
+huggingface-hub
