@@ -1,0 +1,6 @@
+id,image_path,review_text,sentiment,image_color
+1,dataset/images/product_1.jpg,I absolutely love this product! It works perfectly and looks great.,positive,green
+2,dataset/images/product_2.jpg,The quality is terrible. It broke after one use. Do not buy.,negative,red
+3,dataset/images/product_3.jpg,"It's okay, not the best but does the job for the price.",neutral,grey
+4,dataset/images/product_4.jpg,"Amazing experience, highly recommended!",positive,blue
+5,dataset/images/product_5.jpg,Waste of money. Very disappointed.,negative,black

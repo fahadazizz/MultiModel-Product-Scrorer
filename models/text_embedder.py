@@ -1,0 +1,48 @@
+from transformers import AutoTokenizer, AutoModel
+import torch
+import torch.nn.functional as F
+
+class TextEmbedder:
+    def __init__(self, model_name='sentence-transformers/all-MiniLM-L6-v2'):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name)
+        self.model.eval()
+
+    def mean_pooling(self, model_output, attention_mask):
+        token_embeddings = model_output[0] # First element of model_output contains all token embeddings
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+    def get_embeddings(self, texts):
+        """
+        Compute embeddings for a list of texts.
+        Args:
+            texts: List of strings
+        Returns:
+            embeddings: Tensor of shape (batch_size, hidden_size)
+        """
+        encoded_input = self.tokenizer(texts, padding=True, truncation=True, return_tensors='pt')
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+        
+        # Perform pooling
+        sentence_embeddings = self.mean_pooling(model_output, encoded_input['attention_mask'])
+        
+        # Normalize embeddings
+        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        
+        return sentence_embeddings
+
+    def compute_similarity(self, embedding1, embedding2):
+        """
+        Compute cosine similarity between two embeddings.
+        """
+        return F.cosine_similarity(embedding1, embedding2)
+
+if __name__ == "__main__":
+    embedder = TextEmbedder()
+    texts = ["This is a product review.", "I love this item."]
+    embeddings = embedder.get_embeddings(texts)
+    print(f"Embeddings shape: {embeddings.shape}")
+    sim = embedder.compute_similarity(embeddings[0].unsqueeze(0), embeddings[1].unsqueeze(0))
+    print(f"Similarity: {sim.item()}")

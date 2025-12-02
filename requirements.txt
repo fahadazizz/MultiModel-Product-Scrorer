@@ -3,3 +3,10 @@ requests
 transformers
 Pillow
 huggingface-hub
+accelerate
+peft
+scikit-learn
+pandas
+sentencepiece
+datasets
+
