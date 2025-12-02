@@ -1,8 +1,3 @@
-"""
-Verification script for the Multimodel Product Review Analyzer.
-Tests the complete pipeline with sample data.
-"""
-
 from main import ProductReviewAnalyzer
 import os
 
@@ -13,12 +8,6 @@ def verify_analyzer():
     
     # Initialize analyzer
     print("\n[1/3] Initializing analyzer...")
-    # TODO: Fine-tuned model checkpoint appears empty, using base model for architecture verification
-    # finetuned_path = "models/finetuned_roberta/checkpoint-20"
-    # if os.path.exists(finetuned_path):
-    #     print(f"Loading fine-tuned model from {finetuned_path}")
-    #     analyzer = ProductReviewAnalyzer(finetuned_sentiment_path=finetuned_path)
-    # else:
     print("Using base RoBERTa model")
     analyzer = ProductReviewAnalyzer()
     
@@ -60,7 +49,7 @@ def verify_analyzer():
         print('='*70)
         
         if not os.path.exists(test_case['image']):
-            print(f"⚠️  Image not found: {test_case['image']}")
+            print(f"  Image not found: {test_case['image']}")
             continue
         
         try:
@@ -74,10 +63,10 @@ def verify_analyzer():
                 'result': result
             })
             
-            print(f"\n📊 RESULTS:")
+            print(f"\n RESULTS:")
             print(f"   Review: \"{test_case['review']}\"")
-            print(f"\n   ✅ Final Score: {result['final_score']:.3f}")
-            print(f"   ✅ Recommendation: {result['recommendation']}")
+            print(f"\n   Final Score: {result['final_score']:.3f}")
+            print(f"   Recommendation: {result['recommendation']}")
             print(f"\n   Component Scores:")
             print(f"      - Sentiment: {result['components']['sentiment']['label']} "
                   f"({result['components']['sentiment']['normalized_score']:.3f})")
@@ -85,7 +74,7 @@ def verify_analyzer():
             print(f"      - Relevance: {result['components']['relevance']['score']:.3f}")
             
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            print(f"Error: {str(e)}")
             import traceback
             traceback.print_exc()
     

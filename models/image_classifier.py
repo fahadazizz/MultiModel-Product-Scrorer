@@ -15,7 +15,7 @@ class ImageClassifier:
             image: PIL Image or list of PIL Images
         Returns:
             logits: Model output logits
-            predicted_class_idx: Index of the predicted class
+            predicted_class: Index of the predicted class
             predicted_label: Label of the predicted class
         """
         inputs = self.processor(images=image, return_tensors="pt", padding = True)
@@ -29,18 +29,9 @@ class ImageClassifier:
         return logits, predicted_class, predicted_label
 
     def get_embeddings(self, image):
-        """
-        Extracts embeddings from the model (last hidden state before classification head).
-        Note: ViTForImageClassification output usually contains hidden_states if configured, 
-        but by default it returns logits. We might need to hook or use ViTModel if we want raw embeddings.
-        However, for this task, the user mentioned "embeddings(classification) of image".
-        Often the [CLS] token embedding is used.
-        """
         # To get embeddings, we can use the hidden states.
         # We need to enable output_hidden_states=True when calling the model, or use ViTModel.
-        # Let's re-init with output_hidden_states=True if we want to be safe, 
-        # or just use the logits as a high-level representation if that's what's intended.
-        # But usually "embeddings" implies the vector before the final layer.
+        # Usually "embeddings" implies the vector before the final layer.
         
         inputs = self.processor(images=image, return_tensors="pt", padding=True)
         with torch.no_grad():
@@ -50,15 +41,7 @@ class ImageClassifier:
         # For ViT, the first token is [CLS] which represents the image.
         last_hidden_state = outputs.hidden_states[-1]
         cls_embedding = last_hidden_state[:, 0, :]
-        # cls = outputs[0]
+        
         
         return cls_embedding
 
-if __name__ == "__main__":
-    # Test
-    classifier = ImageClassifier()
-    img = Image.open("dataset/images/samsung.jpg").convert("RGB")
-    logits, idx, label = classifier.predict(img)
-    print(f"Predicted: {label}")
-    emb = classifier.get_embeddings(img)
-    print(f"Embedding shape: {emb.shape}")

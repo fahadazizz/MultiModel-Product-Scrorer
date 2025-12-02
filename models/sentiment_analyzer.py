@@ -61,7 +61,6 @@ class SentimentAnalyzer:
         if hasattr(output, 'pooler_output') and output.pooler_output is not None:
             embeddings = output.pooler_output
         else:
-            # Fallback: use CLS token from last_hidden_state
             embeddings = output.last_hidden_state[:, 0, :]
         
         # If single text input, return 1D tensor
@@ -69,17 +68,3 @@ class SentimentAnalyzer:
             embeddings = embeddings.squeeze(0)
         
         return embeddings
-
-if __name__ == "__main__":
-    analyzer = SentimentAnalyzer()
-    text = "This product is amazing!"
-    
-    # Test sentiment analysis
-    scores, label = analyzer.analyze(text)
-    print(f"Text: {text}")
-    print(f"Sentiment Label: {label}")
-    print(f"Sentiment Scores: {scores}")
-    
-    # Test embedding extraction
-    embeddings = analyzer.get_embeddings(text)
-    print(f"Embedding shape: {embeddings.shape}")

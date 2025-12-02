@@ -95,21 +95,5 @@ class ProductReviewAnalyzer:
             return "Not Recommended"
 
 if __name__ == "__main__":
-    # Example usage
     analyzer = ProductReviewAnalyzer()
-    
-    # Test with mock data
-    result = analyzer.analyze(
-        image_path="dataset/images/product_1.jpg",
-        review_text="I absolutely love this product! It works perfectly and looks great."
-    )
-    
-    print("\n" + "="*50)
-    print("ANALYSIS RESULT")
-    print("="*50)
-    print(f"Final Score: {result['final_score']:.3f}")
-    print(f"Recommendation: {result['recommendation']}")
-    print(f"\nSentiment: {result['components']['sentiment']['label']} ({result['components']['sentiment']['normalized_score']:.3f})")
-    print(f"Image: {result['components']['image']['label']} ({result['components']['image']['confidence_score']:.3f})")
-    print(f"Relevance: {result['components']['relevance']['score']:.3f}")
-    print("="*50)
+   

@@ -41,7 +41,7 @@ def compute_metrics(eval_pred):
 def finetune_sentiment(
     dataset_path="dataset/product_review_dataset.csv",
     model_name="cardiffnlp/twitter-roberta-base-sentiment-latest",
-    output_dir="models/finetuned_roberta",
+    output_dir="models/finetuned_roberta_fahad",
     num_epochs=1,
     max_samples=200
 ):
@@ -64,14 +64,7 @@ def finetune_sentiment(
     # Check unique values in sentiment
     print(f"Unique sentiments: {df['sentiment'].unique()}")
     
-    # Standardize sentiment labels if needed
     label_map = {'negative': 0, 'neutral': 1, 'positive': 2}
-    # Handle potential casing issues or extra whitespace
-    df['sentiment'] = df['sentiment'].astype(str).str.lower().str.strip()
-    
-    # Filter out unknown sentiments
-    df = df[df['sentiment'].isin(label_map.keys())]
-    
     df['label'] = df['sentiment'].map(label_map)
     
     # Split dataset
@@ -93,7 +86,6 @@ def finetune_sentiment(
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
     
     print(f"Loading model {model_name}...")
-    # use_safetensors=True to avoid torch vulnerability warning
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=3, use_safetensors=True)
     
     # LoRA Configuration
@@ -101,10 +93,10 @@ def finetune_sentiment(
     peft_config = LoraConfig(
         task_type=TaskType.SEQ_CLS, 
         inference_mode=False, 
-        r=16, # Increased r for better adaptation
+        r=16,
         lora_alpha=32, 
         lora_dropout=0.1,
-        target_modules=["query", "value"] # Target attention modules for RoBERTa
+        target_modules=["query", "value"] 
     )
     
     model = get_peft_model(model, peft_config)
@@ -112,7 +104,7 @@ def finetune_sentiment(
     
     training_args = TrainingArguments(
         output_dir=output_dir,
-        learning_rate=2e-4, # Slightly higher LR for LoRA
+        learning_rate=2e-4,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         num_train_epochs=num_epochs,
