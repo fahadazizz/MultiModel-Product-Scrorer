@@ -11,35 +11,41 @@ def verify_analyzer():
     print("MULTIMODEL PRODUCT REVIEW ANALYZER - VERIFICATION")
     print("="*70)
     
-    # Initialize analyzer (without fine-tuned model for now)
+    # Initialize analyzer
     print("\n[1/3] Initializing analyzer...")
-    analyzer = ProductReviewAnalyzer()
+    finetuned_path = "models/finetuned_roberta"
+    if os.path.exists(finetuned_path):
+        print(f"Loading fine-tuned model from {finetuned_path}")
+        analyzer = ProductReviewAnalyzer(finetuned_sentiment_path=finetuned_path)
+    else:
+        print("Loading base model (fine-tuned model not found)")
+        analyzer = ProductReviewAnalyzer()
     
     # Test cases
     test_cases = [
         {
             "name": "Positive Review",
-            "image": "dataset/images/product_1.jpg",
+            "image": "dataset/images/samsung.jpg",
             "review": "I absolutely love this product! It works perfectly and looks great."
         },
         {
             "name": "Negative Review",
-            "image": "dataset/images/product_2.jpg",
+            "image": "dataset/images/tshirt.jpg",
             "review": "The quality is terrible. It broke after one use. Do not buy."
         },
         {
             "name": "Neutral Review",
-            "image": "dataset/images/product_3.jpg",
+            "image": "dataset/images/samsung.jpg",
             "review": "It's okay, not the best but does the job for the price."
         },
         {
             "name": "Highly Positive Review",
-            "image": "dataset/images/product_4.jpg",
+            "image": "dataset/images/tshirt.jpg",
             "review": "Amazing experience, highly recommended!"
         },
         {
             "name": "Very Negative Review",
-            "image": "dataset/images/product_5.jpg",
+            "image": "dataset/images/samsung.jpg",
             "review": "Waste of money. Very disappointed."
         }
     ]

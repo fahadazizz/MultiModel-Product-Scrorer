@@ -10,4 +10,7 @@ pandas
 sentencepiece
 datasets
 scipy
+numpy<2
+nltk
+evaluate
 

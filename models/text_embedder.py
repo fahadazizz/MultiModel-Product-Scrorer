@@ -33,16 +33,9 @@ class TextEmbedder:
         
         return sentence_embeddings
 
-    def compute_similarity(self, embedding1, embedding2):
-        """
-        Compute cosine similarity between two embeddings.
-        """
-        return F.cosine_similarity(embedding1, embedding2)
 
 if __name__ == "__main__":
     embedder = TextEmbedder()
-    texts = ["This is a product review.", "I love this item."]
-    embeddings = embedder.get_embeddings(texts)
+    text = "This is a product review."
+    embeddings = embedder.get_embeddings([text])
     print(f"Embeddings shape: {embeddings.shape}")
-    sim = embedder.compute_similarity(embeddings[0].unsqueeze(0), embeddings[1].unsqueeze(0))
-    print(f"Similarity: {sim.item()}")
