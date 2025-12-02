@@ -13,13 +13,14 @@ def verify_analyzer():
     
     # Initialize analyzer
     print("\n[1/3] Initializing analyzer...")
-    finetuned_path = "models/finetuned_roberta"
-    if os.path.exists(finetuned_path):
-        print(f"Loading fine-tuned model from {finetuned_path}")
-        analyzer = ProductReviewAnalyzer(finetuned_sentiment_path=finetuned_path)
-    else:
-        print("Loading base model (fine-tuned model not found)")
-        analyzer = ProductReviewAnalyzer()
+    # TODO: Fine-tuned model checkpoint appears empty, using base model for architecture verification
+    # finetuned_path = "models/finetuned_roberta/checkpoint-20"
+    # if os.path.exists(finetuned_path):
+    #     print(f"Loading fine-tuned model from {finetuned_path}")
+    #     analyzer = ProductReviewAnalyzer(finetuned_sentiment_path=finetuned_path)
+    # else:
+    print("Using base RoBERTa model")
+    analyzer = ProductReviewAnalyzer()
     
     # Test cases
     test_cases = [

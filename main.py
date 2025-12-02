@@ -1,5 +1,4 @@
 from models.image_classifier import ImageClassifier
-from models.text_embedder import TextEmbedder
 from models.sentiment_analyzer import SentimentAnalyzer
 from fusion.fusion_layer import FusionLayer
 from PIL import Image
@@ -15,10 +14,7 @@ class ProductReviewAnalyzer:
         print("Loading Image Classifier...")
         self.image_classifier = ImageClassifier()
         
-        print("Loading Text Embedder...")
-        self.text_embedder = TextEmbedder()
-        
-        print("Loading Sentiment Analyzer...")
+        print("Loading Sentiment Analyzer (with text embeddings)...")
         self.sentiment_analyzer = SentimentAnalyzer(load_local_path=finetuned_sentiment_path)
         
         print("Initializing Fusion Layer...")
@@ -48,13 +44,12 @@ class ProductReviewAnalyzer:
         image_logits, image_class_idx, image_label = self.image_classifier.predict(image)
         image_embedding = self.image_classifier.get_embeddings(image)
         
-        # 2. Text Embedding
-        print("Computing text embeddings...")
-        text_embedding = self.text_embedder.get_embeddings([review_text])
-        
-        # 3. Sentiment Analysis
+        # 2. Sentiment Analysis & Text Embedding (both from RoBERTa)
         print("Analyzing sentiment...")
         sentiment_scores, sentiment_label = self.sentiment_analyzer.analyze(review_text)
+        
+        print("Computing text embeddings...")
+        text_embedding = self.sentiment_analyzer.get_embeddings(review_text)
         
         # 4. Fusion
         print("Fusing scores...")

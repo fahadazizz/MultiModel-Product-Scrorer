@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import evaluate
 import numpy as np
-import text_processing
+from text_processing import preprocess_text
 
 
 
