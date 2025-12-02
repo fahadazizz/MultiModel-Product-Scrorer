@@ -9,4 +9,5 @@ scikit-learn
 pandas
 sentencepiece
 datasets
+scipy
 

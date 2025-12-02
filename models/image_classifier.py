@@ -5,7 +5,7 @@ from PIL import Image
 class ImageClassifier:
     def __init__(self, model_name='google/vit-base-patch16-224'):
         self.processor = ViTImageProcessor.from_pretrained(model_name)
-        self.model = ViTForImageClassification.from_pretrained(model_name)
+        self.model = ViTForImageClassification.from_pretrained(model_name , padding=True, truncation=True, return_tensors="pt")
         self.model.eval()
 
     def predict(self, image):
