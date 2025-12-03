@@ -35,8 +35,11 @@ class ProductReviewAnalyzer:
         Returns:
             Dictionary containing final score and component scores
         """
-        image = Image.open(image_path).convert('RGB')
-       
+        # Load image if path provided, otherwise use as is (PIL Image)
+        if isinstance(image_path, str):
+            image = Image.open(image_path).convert('RGB')
+        else:
+            image = image_path
         
         # 1. Image Classification
         print("Classifying image...")
@@ -92,9 +95,16 @@ class ProductReviewAnalyzer:
             'components': {
                 'sentiment': {
                     'label': avg_sentiment_label,
+                    'scores': avg_sentiment_scores,
+                    'normalized_score': fusion_result['sentiment_score']
                 },
                 'image': {
                     'label': image_label,
+                    'class_idx': image_class_idx,
+                    'confidence_score': fusion_result['image_confidence_score']
+                },
+                'relevance': {
+                    'score': fusion_result['relevance_score']
                 }
             }
         }

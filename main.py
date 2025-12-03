@@ -32,10 +32,14 @@ async def classify_image(file: UploadFile = File(...)):
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert('RGB')
         
-        logits, class_idx, label = analyzer.image_classifier.predict(image)
+        logits, _, label = analyzer.image_classifier.predict(image)
+        # Get max confidence score
+        confidences = torch.softmax(logits, dim=1)
+        max_score = torch.max(confidences).item()
         
         return {
-            "label": label
+            "label": label,
+            "score": max_score
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -45,9 +49,12 @@ async def analyze_text(request: TextAnalysisRequest):
     """Analyze sentiment of a review text."""
     try:
         scores, label = analyzer.sentiment_analyzer.analyze(request.text)
+        # Return only the score for the predicted label
+        label_score = scores[label]
+        
         return {
-            "label":label
-            # "scores": scores
+            "label": label,
+            "score": label_score
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -65,10 +72,6 @@ async def recommend(
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert('RGB')
         
-        # # Parse reviews
-        # import json
-        # reviews_list = json.loads(reviews)
-            
         result = analyzer.analyze(image, reviews)
         return result
         
