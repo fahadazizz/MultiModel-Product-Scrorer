@@ -13,4 +13,7 @@ scipy
 numpy<2
 nltk
 evaluate
+fastapi
+uvicorn
+python-multipart
 
