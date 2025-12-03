@@ -3,14 +3,10 @@ from scipy.special import softmax
 import torch
 
 class SentimentAnalyzer:
-    def __init__(self, model_name='cardiffnlp/twitter-roberta-base-sentiment-latest', load_local_path=None):
-        if load_local_path:
-            self.tokenizer = AutoTokenizer.from_pretrained(load_local_path)
-            self.model = AutoModelForSequenceClassification.from_pretrained(load_local_path, use_safetensors=True)
-        else:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModelForSequenceClassification.from_pretrained(model_name, use_safetensors=True)
-        
+    def __init__(self,load_local_path="models/finetuned_roberta_fahad"):
+        self.tokenizer = AutoTokenizer.from_pretrained(load_local_path)
+        self.model = AutoModelForSequenceClassification.from_pretrained(load_local_path, use_safetensors=True)
+    
         self.model.eval()
         self.labels = ['negative', 'neutral', 'positive']
 
@@ -62,9 +58,5 @@ class SentimentAnalyzer:
             embeddings = output.pooler_output
         else:
             embeddings = output.last_hidden_state[:, 0, :]
-        
-        # If single text input, return 1D tensor
-        if len(text) == 1:
-            embeddings = embeddings.squeeze(0)
         
         return embeddings

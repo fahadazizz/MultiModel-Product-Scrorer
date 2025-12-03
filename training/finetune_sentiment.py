@@ -61,7 +61,6 @@ def finetune_sentiment(
     df['processed_text'] = df['reviews'].apply(preprocess_text)
     
     # Map sentiment to labels
-    # Check unique values in sentiment
     print(f"Unique sentiments: {df['sentiment'].unique()}")
     
     label_map = {'negative': 0, 'neutral': 1, 'positive': 2}
