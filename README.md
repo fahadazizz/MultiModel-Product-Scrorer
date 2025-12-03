@@ -68,6 +68,18 @@ print(f"Recommendation: {result['recommendation']}")
 print(f"Sentiment: {result['components']['sentiment']['label']}")
 ```
 
+### Streamlit Dashboard
+
+```bash
+streamlit run dashboard.py
+```
+
+### FastAPI Server
+
+```bash
+uvicorn main:app --reload
+```
+
 ### Fine-Tuning
 
 ```bash
