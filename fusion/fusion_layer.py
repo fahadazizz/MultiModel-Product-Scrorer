@@ -30,19 +30,12 @@ class FusionLayer:
             Dictionary containing final score and intermediate scores.
         """
         # 1. Process Sentiment Score
-        # We want a score from 0 (negative) to 1 (positive).
-        # Assuming sentiment_scores has 'negative', 'neutral', 'positive'
-        # We can use a weighted sum: 0*neg + 0.5*neu + 1*pos
         sentiment_score = self.compute_sentiment_score(sentiment_scores)
         
         # 2. Process Image Confidence Score
-        # High confidence in classification (regardless of class) might indicate a clear product image.
-        # However, for recommendation, we might want to know if the image is "good" or matches the text.
-        # For now, let's use the max probability as a confidence metric.
         image_confidence_score = self.compute_image_confidence_score(image_logits)
         
         # 3. Process Relevance Score (Image-Text Alignment)
-        # Cosine similarity between image and text embeddings.
         relevance_score = self.compute_relevance_score(image_embedding, text_embedding)
         
         # 4. Weighted Fusion

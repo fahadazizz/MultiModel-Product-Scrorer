@@ -14,29 +14,33 @@ def verify_analyzer():
     # Test cases
     test_cases = [
         {
-            "name": "Positive Review",
+            "name": "Positive Reviews (Multiple)",
             "image": "dataset/images/samsung.jpg",
-            "review": "I absolutely love this product! It works perfectly and looks great."
+            "reviews": [
+                "I absolutely love this product! It works perfectly.",
+                "Great design and features. Highly recommended."
+            ]
         },
         {
-            "name": "Negative Review",
+            "name": "Mixed Reviews (Positive + Negative)",
             "image": "dataset/images/tshirt.jpg",
-            "review": "The quality is terrible. It broke after one use. Do not buy."
+            "reviews": [
+                "The material is soft and comfortable.",
+                "However, the stitching started coming apart after one wash. Terrible quality."
+            ]
         },
         {
-            "name": "Neutral Review",
+            "name": "Neutral/Average Reviews",
             "image": "dataset/images/samsung.jpg",
-            "review": "It's okay, not the best but does the job for the price."
+            "reviews": [
+                "It's okay, does the job.",
+                "Not the best, not the worst. Average product."
+            ]
         },
         {
-            "name": "Highly Positive Review",
+            "name": "Single Review (Backward Compatibility)",
             "image": "dataset/images/tshirt.jpg",
-            "review": "Amazing experience, highly recommended!"
-        },
-        {
-            "name": "Very Negative Review",
-            "image": "dataset/images/samsung.jpg",
-            "review": "Waste of money. Very disappointed."
+            "reviews": "Amazing experience, highly recommended!"
         }
     ]
     
@@ -49,13 +53,13 @@ def verify_analyzer():
         print('='*70)
         
         if not os.path.exists(test_case['image']):
-            print(f"  Image not found: {test_case['image']}")
+            print(f"⚠️  Image not found: {test_case['image']}")
             continue
         
         try:
             result = analyzer.analyze(
                 image_path=test_case['image'],
-                review_text=test_case['review']
+                reviews=test_case['reviews']
             )
             
             results.append({
@@ -63,8 +67,13 @@ def verify_analyzer():
                 'result': result
             })
             
-            print(f"\n RESULTS:")
-            print(f"   Review: \"{test_case['review']}\"")
+            print(f"\n📊 RESULTS:")
+            if isinstance(test_case['reviews'], list):
+                print(f"   Reviews ({len(test_case['reviews'])}):")
+                for r in test_case['reviews']:
+                    print(f"     - \"{r}\"")
+            else:
+                print(f"   Review: \"{test_case['reviews']}\"")
             print(f"\n   Final Score: {result['final_score']:.3f}")
             print(f"   Recommendation: {result['recommendation']}")
             print(f"\n   Component Scores:")
