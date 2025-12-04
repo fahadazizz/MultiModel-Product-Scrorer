@@ -163,7 +163,7 @@ with tab3:
                         with c2:
                             st.subheader("Image Quality")
                             img = components['image']
-                            st.metric("Label", img['label'].split(',')[0]) # Show first label
+                            st.metric("Label", ", ".join(label.strip() for label in img['label'].split(",")[:2]))
                             st.progress(img['confidence_score'])
                             
                         with c3:

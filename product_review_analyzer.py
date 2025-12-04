@@ -47,6 +47,19 @@ class ProductReviewAnalyzer:
         image_embedding = self.image_classifier.get_embeddings(image)
         
         # 2. Multi-Review Analysis & Aggregation
+        # Ensure reviews is a list
+        if isinstance(reviews, str):
+            # Try to parse as JSON list if it looks like one
+            import json
+            try:
+                parsed = json.loads(reviews)
+                if isinstance(parsed, list):
+                    reviews = parsed
+                else:
+                    reviews = [reviews]
+            except:
+                reviews = [reviews]
+                
         print(f"Analyzing {len(reviews)} reviews...")
         
         all_sentiment_scores = []
@@ -77,7 +90,7 @@ class ProductReviewAnalyzer:
             stacked_embeddings = torch.stack(all_text_embeddings)
             avg_text_embedding = torch.mean(stacked_embeddings, dim=0)
         else:
-            avg_text_embedding = None # Should not happen if reviews list is not empty
+            avg_text_embedding = None 
             
         # 3. Fusion with Aggregated Values
         print("Fusing scores...")
