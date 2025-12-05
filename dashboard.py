@@ -161,7 +161,7 @@ with tab3:
                             st.progress(sent['normalized_score'])
                             
                         with c2:
-                            st.subheader("Image Quality")
+                            st.subheader("Image Label")
                             img = components['image']
                             st.metric("Label", ", ".join(label.strip() for label in img['label'].split(",")[:2]))
                             st.progress(img['confidence_score'])

@@ -11,6 +11,7 @@ from peft import LoraConfig, get_peft_model, TaskType
 from datasets import Dataset
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
 import evaluate
 import numpy as np
 from text_processing import preprocess_text
@@ -19,11 +20,12 @@ from text_processing import preprocess_text
 
 def compute_metrics(eval_pred):
     """
-    Compute metrics: Accuracy, F1, Precision.
+    Compute metrics: Accuracy, F1, Precision, Recall.
     """
     accuracy_metric = evaluate.load("accuracy")
     f1_metric = evaluate.load("f1")
     precision_metric = evaluate.load("precision")
+    recall_metric = evaluate.load("recall")
     
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
@@ -31,11 +33,13 @@ def compute_metrics(eval_pred):
     accuracy = accuracy_metric.compute(predictions=predictions, references=labels)
     f1 = f1_metric.compute(predictions=predictions, references=labels, average="weighted")
     precision = precision_metric.compute(predictions=predictions, references=labels, average="weighted")
+    recall = recall_metric.compute(predictions=predictions, references=labels, average="weighted")
     
     return {
         "accuracy": accuracy["accuracy"],
         "f1": f1["f1"],
-        "precision": precision["precision"]
+        "precision": precision["precision"],
+        "recall": recall["recall"]
     }
 
 def finetune_sentiment(
@@ -138,6 +142,20 @@ def finetune_sentiment(
     print("Evaluating...")
     metrics = trainer.evaluate()
     print(f"Evaluation metrics: {metrics}")
+    
+    # Detailed Evaluation
+    print("\nGenerating Detailed Classification Report...")
+    predictions = trainer.predict(tokenized_val)
+    pred_labels = np.argmax(predictions.predictions, axis=-1)
+    true_labels = predictions.label_ids
+    
+    target_names = ['negative', 'neutral', 'positive']
+    
+    print("\nConfusion Matrix:")
+    print(confusion_matrix(true_labels, pred_labels))
+    
+    print("\nClassification Report:")
+    print(classification_report(true_labels, pred_labels, target_names=target_names))
 
 if __name__ == "__main__":
     finetune_sentiment()
