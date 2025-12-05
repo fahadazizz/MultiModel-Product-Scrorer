@@ -18,4 +18,5 @@ uvicorn
 python-multipart
 streamlit
 requests
+pyyaml
 

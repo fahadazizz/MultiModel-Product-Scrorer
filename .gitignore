@@ -17,3 +17,5 @@ fusion/__pycache__/
 model/__pycache__/
 training/__pycache__/
 dataset/
+models/finetuned_vit_fahad/
+models/finetuned_roberta_fahad/

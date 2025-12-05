@@ -133,7 +133,10 @@ def train_vision_model(
         load_best_model_at_end=True,
         metric_for_best_model="accuracy",
         logging_dir=f"{output_dir}/logs",
+        logging_strategy="steps",
         logging_steps=10,
+        logging_first_step=True,
+        report_to="none"  # Force output to console
     )
     
     trainer = Trainer(

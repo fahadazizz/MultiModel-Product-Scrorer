@@ -7,15 +7,16 @@ import torch
 
 
 class ProductReviewAnalyzer:
-    def __init__(self, finetuned_sentiment_path="models/finetuned_roberta_fahad"):
+    def __init__(self, finetuned_sentiment_path="models/finetuned_roberta_fahad", finetuned_vision_path="models/finetuned_vit_fahad"):
         """
         Initialize the multimodel product review analyzer.
         
         Args:
             finetuned_sentiment_path: Path to fine-tuned sentiment model (optional)
+            finetuned_vision_path: Path to fine-tuned vision model (optional)
         """
         print("Loading Image Classifier...")
-        self.image_classifier = ImageClassifier()
+        self.image_classifier = ImageClassifier(model_path=finetuned_vision_path)
         
         print("Loading Sentiment Analyzer (with text embeddings)...")
         self.sentiment_analyzer = SentimentAnalyzer(load_local_path=finetuned_sentiment_path)
@@ -128,7 +129,7 @@ class ProductReviewAnalyzer:
         """Convert score to recommendation category."""
         if score >= 0.8:
             return "Highly Recommended"
-        elif score >= 0.6:
+        elif score >= 0.5:
             return "Recommended"
         elif score >= 0.3:
             return "Neutral"
