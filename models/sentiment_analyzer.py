@@ -1,13 +1,15 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, RobertaForSequenceClassification, RobertaModel
 from scipy.special import softmax
 import torch
 
 class SentimentAnalyzer:
     def __init__(self,load_local_path="models/finetuned_roberta_fahad"):
         self.tokenizer = AutoTokenizer.from_pretrained(load_local_path)
-        self.model = AutoModelForSequenceClassification.from_pretrained(load_local_path, use_safetensors=True)
+        self.model = RobertaForSequenceClassification.from_pretrained(load_local_path, use_safetensors=True)
+        self.roberta_model = RobertaModel.from_pretrained(load_local_path, use_safetensors=True)
     
         self.model.eval()
+        self.roberta_model.eval()
         self.labels = ['negative', 'neutral', 'positive']
 
     def analyze(self, text):
@@ -39,7 +41,7 @@ class SentimentAnalyzer:
     
     def get_embeddings(self, text):
         """
-        Extract text embeddings from RoBERTa's CLS token (pooler_output).
+        Extract text embeddings from RoBERTa's CLS token.
         Args:
             text: String or list of strings
         Returns:
@@ -47,16 +49,16 @@ class SentimentAnalyzer:
         """
         if isinstance(text, str):
             text = [text]
-        
-        encoded_input = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
+
+        # Tokenize input
+        encoded_input = self.tokenizer(
+            text, return_tensors='pt', padding=True, truncation=True, max_length=512
+        )
+
         with torch.no_grad():
-            output = self.model.roberta(**encoded_input)
-        
-        # RoBERTa pooler_output is the CLS token representation
-        # If pooler is not available, we can use last_hidden_state[:, 0, :]
-        if hasattr(output, 'pooler_output') and output.pooler_output is not None:
-            embeddings = output.pooler_output
-        else:
-            embeddings = output.last_hidden_state[:, 0, :]
-        
-        return embeddings
+            # Forward pass through RobertaModel (base model)
+            output = self.roberta_model(**encoded_input)
+
+        embedding = output.last_hidden_state[:, 0, :]
+
+        return embedding

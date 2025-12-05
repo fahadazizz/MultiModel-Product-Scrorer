@@ -3,38 +3,14 @@ import torch.nn.functional as F
 from scipy.spatial.distance import cosine
 import numpy as np
 
-import yaml
-import os
-
 class FusionLayer:
-    def __init__(self, config_path='config/fusion_config.yaml'):
-        # Load weights from config
-        self.weights = self._load_config(config_path)
-
-    def _load_config(self, config_path):
-        try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    return config.get('fusion_weights', {
-                        'sentiment': 0.5,
-                        'image_confidence': 0.3,
-                        'relevance': 0.2
-                    })
-            else:
-                print(f"Warning: Config file {config_path} not found. Using default weights.")
-                return {
-                    'sentiment': 0.5,
-                    'image_confidence': 0.3,
-                    'relevance': 0.2
-                }
-        except Exception as e:
-            print(f"Error loading config: {e}. Using default weights.")
-            return {
-                'sentiment': 0.5,
-                'image_confidence': 0.3,
-                'relevance': 0.2
-            }
+    def __init__(self):
+        # Simplified weights as requested
+        self.weights = {
+            'sentiment': 0.5,
+            'image_confidence': 0.3,
+            'relevance': 0.2
+        }
         
     def fuse(self, sentiment_scores, image_logits, image_embedding, text_embedding):
         """

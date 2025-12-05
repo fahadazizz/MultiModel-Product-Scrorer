@@ -16,12 +16,9 @@ analyzer = None
 @app.on_event("startup")
 async def startup_event():
     global analyzer
-    finetuned_sentiment = "models/finetuned_roberta_fahad"
-    finetuned_vision = "models/finetuned_vit_fahad"
-    analyzer = ProductReviewAnalyzer(
-        finetuned_sentiment_path=finetuned_sentiment,
-        finetuned_vision_path=finetuned_vision
-    )
+    analyzer = ProductReviewAnalyzer(finetuned_sentiment_path="models/finetuned_roberta_fahad", 
+    finetuned_vit_path="models/finetuned_vit_fahad", 
+    fusion_model_path="models/fusionMLP_model.pth")
 
 class TextAnalysisRequest(BaseModel):
     text: str
@@ -41,10 +38,17 @@ async def classify_image(file: UploadFile = File(...)):
         confidences = torch.softmax(logits, dim=1)
         max_score = torch.max(confidences).item()
         
-        return {
-            "label": label,
-            "score": max_score
-        }
+        return if max_score < 5:
+            {
+                "label": "Please enter a valid image",
+                "score": 0 
+            }
+        else:
+            {
+                "label": label,
+                "score": max_score 
+            }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
