@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 
 class ImageClassifier:
-    def __init__(self, load_local_path="models/finetuned_vit_fahad"):
+    def __init__(self, load_local_path="models/trained/finetuned_vit_fahad"):
         self.processor = ViTImageProcessor.from_pretrained(load_local_path)
         self.model = ViTForImageClassification.from_pretrained(load_local_path, use_safetensors=True)
         self.vitModel = ViTModel.from_pretrained(load_local_path, use_safetensors=True)

@@ -3,7 +3,7 @@ from scipy.special import softmax
 import torch
 
 class SentimentAnalyzer:
-    def __init__(self,load_local_path="models/finetuned_roberta_fahad"):
+    def __init__(self,load_local_path="models/trained/finetuned_roberta_fahad"):
         self.tokenizer = AutoTokenizer.from_pretrained(load_local_path)
         self.model = RobertaForSequenceClassification.from_pretrained(load_local_path, use_safetensors=True)
         self.roberta_model = RobertaModel.from_pretrained(load_local_path, use_safetensors=True)

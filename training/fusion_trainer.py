@@ -9,7 +9,6 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from tqdm import tqdm
-# import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, RobertaModel, ViTImageProcessor, ViTModel
 import warnings
 warnings.filterwarnings('ignore')
@@ -17,15 +16,13 @@ warnings.filterwarnings('ignore')
 # Configuration
 class Config:
     BATCH_SIZE = 64
-    LEARNING_RATE = 5e-5
+    LEARNING_RATE = 4e-4
     NUM_EPOCHS = 20
     HIDDEN_DIM = 256
-    DROPOUT_RATE = 0.2
-    IMAGE_SIZE = 224
-    MAX_TEXT_LENGTH = 128
+    DROPOUT_RATE = 0.3
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     MODEL_SAVE_PATH = 'models/fusionMLP_model.pth'
-    DATA_PATH = 'dataset/temp_fusion_dataset.csv'
+    DATA_PATH = 'dataset/fusion_dataset.csv'
     IMAGE_DIR = 'dataset/images/'
 
 config = Config()
@@ -34,11 +31,11 @@ config = Config()
 class FeatureExtractors:
     def __init__(self):
         print("Loading pretrained models...")
-        self.vit_model = ViTModel.from_pretrained('models/finetuned_vit_fahad')
-        self.vit_feature_extractor = ViTImageProcessor.from_pretrained('models/finetuned_vit_fahad',  use_safetensors=True)
+        self.vit_model = ViTModel.from_pretrained('models/trained/finetuned_vit_fahad')
+        self.vit_feature_extractor = ViTImageProcessor.from_pretrained('models/trained/finetuned_vit_fahad',  use_safetensors=True)
         
-        self.roberta_model = RobertaModel.from_pretrained('models/finetuned_roberta_fahad', use_safetensors=True)
-        self.roberta_tokenizer = AutoTokenizer.from_pretrained('models/finetuned_roberta_fahad')
+        self.roberta_model = RobertaModel.from_pretrained('models/trained/finetuned_roberta_fahad', use_safetensors=True)
+        self.roberta_tokenizer = AutoTokenizer.from_pretrained('models/trained/finetuned_roberta_fahad')
         
         self.vit_model = self.vit_model.to(config.DEVICE)
         self.roberta_model = self.roberta_model.to(config.DEVICE)
@@ -75,24 +72,23 @@ class CachedEmbeddingDataset(Dataset):
             'original_score': 1 + self.scores[idx] * 9  # Convert back to 1-10 for metrics
         }
 
-# 3. Fusion Model Architecture
+
+# 3. MultiModel Fusion
 class MultimodalFusion(nn.Module):
+    """FIXED architecture - No BatchNorm for single-sample inference"""
     def __init__(self, input_dim=768, hidden_dim=256, dropout=0.2):
         super().__init__()
-        # Fusion network (simplified for speed)
         self.fusion = nn.Sequential(
             nn.Linear(input_dim * 2, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.BatchNorm1d(hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim // 2, 1)
         )
-        
-        # Initialize weights
+
+        # Initialize weights properly
         for layer in self.fusion:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
@@ -101,6 +97,8 @@ class MultimodalFusion(nn.Module):
     def forward(self, vit_features, text_features):
         fused = torch.cat([vit_features, text_features], dim=1)
         return self.fusion(fused).squeeze(1)
+
+
 
 # 4. Pre-compute Embeddings Function
 def precompute_embeddings(dataset, feature_extractors, device):
@@ -138,12 +136,12 @@ def precompute_embeddings(dataset, feature_extractors, device):
                 try:
                     image = Image.open(img_path).convert('RGB')
                     inputs = feature_extractors.vit_feature_extractor(
-                        images=image, return_tensors="pt", size={"height": config.IMAGE_SIZE, "width": config.IMAGE_SIZE}
+                        images=image, return_tensors="pt"
                     )
                     batch_images.append(inputs['pixel_values'])
                 except:
                     # Fallback: zero tensor
-                    batch_images.append(torch.zeros(1, 3, config.IMAGE_SIZE, config.IMAGE_SIZE))
+                    batch_images.append(torch.zeros(1, 3))
             
             pixel_values = torch.cat(batch_images, dim=0).to(device)
             vit_feats = feature_extractors.get_vit_features(pixel_values)
@@ -151,7 +149,7 @@ def precompute_embeddings(dataset, feature_extractors, device):
             # Process texts
             reviews = batch['review']
             text_inputs = feature_extractors.roberta_tokenizer(
-                reviews, padding=True, truncation=True, max_length=config.MAX_TEXT_LENGTH, return_tensors="pt"
+                reviews, padding=True, truncation=True, return_tensors="pt"
             )
             input_ids = text_inputs['input_ids'].to(device)
             attention_mask = text_inputs['attention_mask'].to(device)
@@ -297,33 +295,6 @@ def train_multimodal_model():
     print(f"\nTraining completed! Best validation RMSE: {best_val_rmse:.4f}")
     return model
 
-# 7. Inference Function
-def predict_score(model, feature_extractors, image_path, review_text, device=config.DEVICE):
-    """Predict recommendation score for a single product"""
-    model.eval()
-    
-    # Preprocess image
-    image = Image.open(image_path).convert('RGB')
-    image_inputs = feature_extractors.vit_feature_extractor(
-        images=image, return_tensors="pt", size={"height": config.IMAGE_SIZE, "width": config.IMAGE_SIZE}
-    )
-    pixel_values = image_inputs['pixel_values'].to(device)
-    
-    # Preprocess text
-    text_inputs = feature_extractors.roberta_tokenizer(
-        review_text, padding='max_length', truncation=True, max_length=config.MAX_TEXT_LENGTH, return_tensors="pt"
-    )
-    input_ids = text_inputs['input_ids'].to(device)
-    attention_mask = text_inputs['attention_mask'].to(device)
-    
-    # Extract features and predict
-    with torch.no_grad():
-        vit_features = feature_extractors.get_vit_features(pixel_values)
-        text_features = feature_extractors.get_roberta_features(input_ids, attention_mask)
-        normalized_pred = model(vit_features, text_features).cpu().item()
-        final_score = 1 + normalized_pred * 9  # Convert back to 1-10 scale
-    
-    return final_score
 
 if __name__ == "__main__":
     trained_model = train_multimodal_model()
