@@ -112,19 +112,21 @@ class ProductReviewAnalyzer:
         print("Getting recommendation score from trained fusion model...")
         with torch.no_grad():
             # Get prediction from your trained fusion model
-            
             normalized_score = self.fusion_model(image_embedding, text_embedding)
+            print("normalized score", normalized_score)
             
             # Convert from 0-1 normalized scale back to 1-10 scale
-            final_score = 1 + normalized_score.cpu().item() * 9
+            converted_score = 1 + normalized_score.cpu().item() * 9
+            print("converted score", converted_score)
+           
             
             # Clamp to valid range
-            final_score = max(1.0, min(10.0, final_score))
-            
+            final_score = max(1.0, min(10.0, converted_score))
+            print("final score", final_score)
 
         # Compile results
         result = {
-            'final_score': round(final_score, 2),
+            'final_score': final_score,
             'recommendation': self._get_recommendation(final_score),
             'components': {
                 'sentiment': {
@@ -142,11 +144,11 @@ class ProductReviewAnalyzer:
 
     def _get_recommendation(self, score):
         """Convert score to recommendation category."""
-        if score >= 8.0:
+        if score >= 9.0:
             return "Highly Recommended"
-        elif score >= 6.0:
+        elif score >= 5.0:
             return "Recommended"
-        elif score >= 3.0:
+        elif score >= 3:
             return "Neutral"
         else:
             return "Not Recommended"

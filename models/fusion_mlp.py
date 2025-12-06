@@ -12,8 +12,9 @@ class MultimodalFusion(nn.Module):
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, 1)
-        )
+            nn.Linear(hidden_dim // 2, 1),
+            nn.Sigmoid()        
+            )
 
         # Initialize weights properly
         for layer in self.fusion:
