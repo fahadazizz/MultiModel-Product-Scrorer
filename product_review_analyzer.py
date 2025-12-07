@@ -12,7 +12,7 @@ class ProductReviewAnalyzer:
     def __init__(self, 
                  finetuned_sentiment_path="models/trained/finetuned_roberta_fahad", 
                  finetuned_vit_path="models/trained/finetuned_vit_fahad",
-                 fusion_model_path="models/trained/fusion_mlp_final.pth"):
+                 fusion_model_path="models/trained/fusion_multimodelMLP.pth"):
         """
         Initialize the multimodel product review analyzer with your new fusion model.
         
@@ -80,20 +80,24 @@ class ProductReviewAnalyzer:
         logits, _, image_label = self.image_classifier.predict(image)
         # Get max confidence score
         confidences = torch.softmax(logits, dim=1)
-        max_score = torch.max(confidences).item()
+        image_score = torch.max(confidences).item()
 
-        if max_score < 0.5:
+        if image_score < 0.5:
             return {
-                "final_score": 0,
+                "score": 0.0,
                 "recommendation": "NILL",
                 "components": {
                     "sentiment": {
                         "label": "Pleasa Provide correct image",
-                        "scores": {"positive": 0, "negative": 0}
+                        "score": {"positive": 0, "negative": 0}
                     },
-                    "image": {
+                    "visual": {
                         "label": "NILL",
-                        "confidence_score": 0
+                        "score": 0.0
+                    },
+                    "fusion": {
+                        "relevance_similarity": 0.0,
+                        "normalized_score": 0.0
                     }
                 }
             }
@@ -103,6 +107,7 @@ class ProductReviewAnalyzer:
         sentiment_scores, sentiment_label = self.sentiment_analyzer.analyze(reviews)
         print("sentiment scores", sentiment_scores)
         print("sentiment label", sentiment_label)
+        sentiment_score = sentiment_scores # Added sentiment_score for consistency with new output format
 
 
         print("Extracting image embedding...")
@@ -111,33 +116,59 @@ class ProductReviewAnalyzer:
         print("Extracting text embedding...")
         text_embedding = self._extract_text_embedding(reviews)
         
+        # 1. Relevance Gating (New Feature)
+        # Compute cosine similarity between image and text
+        with torch.no_grad():
+            similarity = self.fusion_model.compute_similarity(image_embedding, text_embedding).item()
+            
+        print(f"Relevance Similarity: {similarity:.4f}")
+        
+        # Threshold T = 0.2 (Can be tuned)
+        # Cosine similarity range [-1, 1]. Unrelated/Random is usually ~0.
+        if similarity < 0.3:
+             return {
+                "score": 0.0,
+                "recommendation": "Irrelevant image and review",
+                "components": {
+                    "sentiment": {"label": sentiment_label, "score": sentiment_score},
+                    "visual": {"label": image_label, "score": image_score},
+                    "fusion": {"relevance_similarity": similarity}
+                }
+             }
+
+        # 2. Get recommendation score from trained fusion model
         print("Getting recommendation score from trained fusion model...")
         with torch.no_grad():
-            # Get prediction from your trained fusion model
-            normalized_score = self.fusion_model(image_embedding, text_embedding)
-            print("normalized score", normalized_score)
+            # Pass sequence (B, 197, 768) and CLS (B, 768)
+            score = self.fusion_model(image_embedding, text_embedding) 
             
-            # Convert from 0-1 normalized scale back to 1-10 scale
-            converted_score = 1 + normalized_score.cpu().item() * 9
-            print("converted score", converted_score)
-           
-            
-            # Clamp to valid range
-            final_score = max(1.0, min(10.0, converted_score))
-            print("final score", final_score)
-
+        final_score_raw = score.item()
+        
+        # 3. Denormalize score (0-1 -> 1-10)
+        normalized_score = final_score_raw
+        final_score = 1 + final_score_raw * 9
+        
+        # Clamp to 1-10
+        final_score = max(1.0, min(10.0, final_score))
+        
+        recommendation = self._get_recommendation(final_score)
+        
         # Compile results
         result = {
-            'final_score': final_score,
-            'recommendation': self._get_recommendation(final_score),
-            'components': {
-                'sentiment': {
-                    'label': sentiment_label,
-                    'scores': sentiment_scores
+            "score": final_score,
+            "recommendation": recommendation,
+            "components": {
+                "sentiment": {
+                    "label": sentiment_label, 
+                    "score": sentiment_score
                 },
-                'image': {
-                    'label': image_label,
-                    'confidence': confidences
+                "visual": {     
+                    "label": image_label, 
+                    "score": image_score 
+                },
+                "fusion": {
+                    "normalized_score": normalized_score,
+                    "relevance_similarity": similarity
                 }
             }
         }
@@ -146,9 +177,7 @@ class ProductReviewAnalyzer:
 
     def _get_recommendation(self, score):
         """Convert score to recommendation category."""
-        if score >= 9.0:
-            return "Highly Recommended"
-        elif score >= 5.0:
+        if score >= 5:
             return "Recommended"
         elif score >= 3:
             return "Neutral"

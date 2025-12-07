@@ -54,6 +54,11 @@ class MultimodalFusion(nn.Module):
             nn.Sigmoid()
         )
         
+        # Projection Heads for Contrastive Learning (Relevance)
+        proj_dim = 256
+        self.txt_proj = nn.Linear(input_dim, proj_dim)
+        self.img_proj = nn.Linear(input_dim, proj_dim)
+        
         # Initialize weights
         self._init_weights()
 
@@ -63,6 +68,12 @@ class MultimodalFusion(nn.Module):
                 nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+        
+        # Init projections
+        nn.init.xavier_uniform_(self.txt_proj.weight)
+        nn.init.constant_(self.txt_proj.bias, 0)
+        nn.init.xavier_uniform_(self.img_proj.weight)
+        nn.init.constant_(self.img_proj.bias, 0)
 
     def forward(self, vit_sequences, text_cls):
         """
@@ -98,3 +109,38 @@ class MultimodalFusion(nn.Module):
         score = self.fusion(fused_features).squeeze(1) # (B)
         
         return score
+
+    def get_projected_embeddings(self, vit_sequences, text_cls):
+        """
+        Returns projected embeddings for contrastive learning/similarity.
+        """
+        # Pool Image: (B, 197, 768) -> (B, 768) (using CLS at index 0)
+        img_emb = vit_sequences[:, 0, :]
+        
+        # Project
+        img_proj = self.img_proj(img_emb)   
+        txt_proj = self.txt_proj(text_cls) 
+        
+        # Normalize
+        img_proj = F.normalize(img_proj, p=2, dim=1)
+        txt_proj = F.normalize(txt_proj, p=2, dim=1)
+        
+        return img_proj, txt_proj
+
+    def forward_train(self, vit_sequences, text_cls):
+        """
+        Returns (score, img_proj, txt_proj) for training loop.
+        """
+        score = self.forward(vit_sequences, text_cls)
+        img_proj, txt_proj = self.get_projected_embeddings(vit_sequences, text_cls)
+        return score, img_proj, txt_proj
+
+    def compute_similarity(self, vit_sequences, text_cls):
+        """
+        Compute cosine similarity between image and text.
+        Returns: (B) tensor of similarity scores [-1, 1].
+        """
+        img_proj, txt_proj = self.get_projected_embeddings(vit_sequences, text_cls)
+        # Cosine similarity is just dot product of normalized vectors
+        similarity = (img_proj * txt_proj).sum(dim=1) 
+        return similarity * 9
