@@ -15,7 +15,7 @@ def verify_analyzer():
     test_cases = [
         {
             "name": "Positive Reviews (Multiple)",
-            "image": "dataset/images/samsung.jpg",
+            "image": "dataset/multimodel_images/0.0_0.jpg",
             "reviews": [
                 "I absolutely love this product! It works perfectly.",
                 "Great design and features. Highly recommended."
@@ -23,7 +23,7 @@ def verify_analyzer():
         },
         {
             "name": "Mixed Reviews (Positive + Negative)",
-            "image": "dataset/images/tshirt.jpg",
+            "image": "dataset/multimodel_images/0.0_0.jpg",
             "reviews": [
                 "The material is soft and comfortable.",
                 "However, the stitching started coming apart after one wash. Terrible quality."
@@ -31,7 +31,7 @@ def verify_analyzer():
         },
         {
             "name": "Neutral/Average Reviews",
-            "image": "dataset/images/samsung.jpg",
+            "image": "dataset/multimodel_images/0.0_0.jpg",
             "reviews": [
                 "It's okay, does the job.",
                 "Not the best, not the worst. Average product."
@@ -39,7 +39,7 @@ def verify_analyzer():
         },
         {
             "name": "Single Review (Backward Compatibility)",
-            "image": "dataset/images/tshirt.jpg",
+            "image": "dataset/multimodel_images/0.0_0.jpg",
             "reviews": "Amazing experience, highly recommended!"
         }
     ]

@@ -12,7 +12,7 @@ class ProductReviewAnalyzer:
     def __init__(self, 
                  finetuned_sentiment_path="models/trained/finetuned_roberta_fahad", 
                  finetuned_vit_path="models/trained/finetuned_vit_fahad",
-                 fusion_model_path="models/trained/fusionMLP_model.pth"):
+                 fusion_model_path="models/trained/fusion_mlp_final.pth"):
         """
         Initialize the multimodel product review analyzer with your new fusion model.
         
@@ -43,12 +43,13 @@ class ProductReviewAnalyzer:
         else:
             print(f"Warning: Fusion model not found at {model_path}. Using untrained model.")
         
+        model.eval() # Ensure model is in eval mode for inference
         return model
 
     def _extract_image_embedding(self, image):
-        """Extract ViT embedding for the image"""
-        embedding = self.image_classifier.get_embeddings(image)
-        print("Image embeding extracted")
+        """Extract ViT embedding for the image (Sequence)"""
+        embedding = self.image_classifier.get_sequence_embeddings(image)
+        print("Image embedding extracted (Sequence)")
         return embedding
 
     def _extract_text_embedding(self, reviews):
@@ -87,7 +88,7 @@ class ProductReviewAnalyzer:
                 "recommendation": "NILL",
                 "components": {
                     "sentiment": {
-                        "label": "NILL",
+                        "label": "Pleasa Provide correct image",
                         "scores": {"positive": 0, "negative": 0}
                     },
                     "image": {
@@ -100,7 +101,8 @@ class ProductReviewAnalyzer:
         # Get sentiment analysis for context
         print("Getting sentiment analysis...")
         sentiment_scores, sentiment_label = self.sentiment_analyzer.analyze(reviews)
-
+        print("sentiment scores", sentiment_scores)
+        print("sentiment label", sentiment_label)
 
 
         print("Extracting image embedding...")

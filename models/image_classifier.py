@@ -46,4 +46,23 @@ class ImageClassifier:
         
         return cls_embedding
 
+    def get_sequence_embeddings(self, image):
+        """
+        Get the full sequence of embeddings (last_hidden_state) from ViT.
+        Args:
+            image: PIL Image or list of PIL Images
+        Returns:
+            sequence_embeddings: Tensor of shape (batch_size, seq_len, hidden_size)
+        """
+        # Preprocess image
+        inputs = self.processor(images=image, return_tensors="pt", padding=True)
+        
+        # Get features from ViTModel
+        with torch.no_grad():
+            outputs = self.vitModel(**inputs, output_hidden_states=True)
+        
+        # last_hidden_state shape: (batch_size, sequence_length, hidden_size)
+        # Sequence length is typically 197 for ViT-base (16x16 patches + CLS)
+        return outputs.last_hidden_state
+
 
