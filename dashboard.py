@@ -138,7 +138,7 @@ with tab3:
                         
                         # Display Final Result
                         st.divider()
-                        final_score = result['score'] # Changed from final_score
+                        final_score = result['final_score']
                         recommendation = result['recommendation']
                         
                         # Color coding
@@ -158,23 +158,19 @@ with tab3:
                             st.subheader("Sentiment")
                             sent = components['sentiment']
                             st.metric("Label", sent['label'])
-                            # Handle dict score
-                            sent_conf = sent['score'][sent['label']] if isinstance(sent['score'], dict) else sent['score']
-                            st.progress(float(sent_conf))
+                            st.progress(sent['normalized_score'])
                             
                         with c2:
-                            st.subheader("Visual Analysis") # Renamed from Image Label
-                            img = components['visual'] # Renamed from image
+                            st.subheader("Image Label")
+                            img = components['image']
                             st.metric("Label", ", ".join(label.strip() for label in img['label'].split(",")[:2]))
-                            st.progress(float(img['score'])) # Renamed from confidence_score
+                            st.progress(img['confidence_score'])
                             
                         with c3:
-                            st.subheader("Fusion Relevance") # Renamed from Relevance
-                            fus = components['fusion'] # Renamed from relevance
-                            rel_score = fus.get('relevance_similarity', 0.0)
-                            st.metric("Similarity", f"{rel_score:.3f}")
-                            # Clamp for progress bar
-                            st.progress(max(0.0, min(1.0, float(rel_score))))
+                            st.subheader("Relevance")
+                            rel = components['relevance']
+                            st.metric("Score", f"{rel['score']:.3f}")
+                            st.progress(rel['score'])
                             
             
                             

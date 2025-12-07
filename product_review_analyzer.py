@@ -80,24 +80,20 @@ class ProductReviewAnalyzer:
         logits, _, image_label = self.image_classifier.predict(image)
         # Get max confidence score
         confidences = torch.softmax(logits, dim=1)
-        image_score = torch.max(confidences).item()
+        max_score = torch.max(confidences).item()
 
-        if image_score < 0.5:
+        if max_score < 0.5:
             return {
-                "score": 0.0,
+                "final_score": 0,
                 "recommendation": "NILL",
                 "components": {
                     "sentiment": {
                         "label": "Pleasa Provide correct image",
-                        "score": {"positive": 0, "negative": 0}
+                        "scores": {"positive": 0, "negative": 0}
                     },
-                    "visual": {
+                    "image": {
                         "label": "NILL",
-                        "score": 0.0
-                    },
-                    "fusion": {
-                        "relevance_similarity": 0.0,
-                        "normalized_score": 0.0
+                        "confidence_score": 0
                     }
                 }
             }
@@ -107,7 +103,6 @@ class ProductReviewAnalyzer:
         sentiment_scores, sentiment_label = self.sentiment_analyzer.analyze(reviews)
         print("sentiment scores", sentiment_scores)
         print("sentiment label", sentiment_label)
-        sentiment_score = sentiment_scores # Added sentiment_score for consistency with new output format
 
 
         print("Extracting image embedding...")
@@ -116,59 +111,46 @@ class ProductReviewAnalyzer:
         print("Extracting text embedding...")
         text_embedding = self._extract_text_embedding(reviews)
         
-        # 1. Relevance Gating (New Feature)
-        # Compute cosine similarity between image and text
-        with torch.no_grad():
-            similarity = self.fusion_model.compute_similarity(image_embedding, text_embedding).item()
-            
-        print(f"Relevance Similarity: {similarity:.4f}")
-        
-        # Threshold T = 0.2 (Can be tuned)
-        # Cosine similarity range [-1, 1]. Unrelated/Random is usually ~0.
-        if similarity < 0.3:
-             return {
-                "score": 0.0,
-                "recommendation": "Irrelevant image and review",
-                "components": {
-                    "sentiment": {"label": sentiment_label, "score": sentiment_score},
-                    "visual": {"label": image_label, "score": image_score},
-                    "fusion": {"relevance_similarity": similarity}
-                }
-             }
-
-        # 2. Get recommendation score from trained fusion model
         print("Getting recommendation score from trained fusion model...")
         with torch.no_grad():
-            # Pass sequence (B, 197, 768) and CLS (B, 768)
-            score = self.fusion_model(image_embedding, text_embedding) 
+            # Get prediction from your trained fusion model
+            normalized_score, relevance_score = self.fusion_model(image_embedding, text_embedding)
+            print("normalized score", normalized_score)
+            print("relevance score", relevance_score)
             
-        final_score_raw = score.item()
-        
-        # 3. Denormalize score (0-1 -> 1-10)
-        normalized_score = final_score_raw
-        final_score = 1 + final_score_raw * 9
-        
-        # Clamp to 1-10
-        final_score = max(1.0, min(10.0, final_score))
-        
-        recommendation = self._get_recommendation(final_score)
-        
+            # Check Relevance
+            relevance_val = relevance_score.item()
+            is_relevant = relevance_val > 0.0 # Threshold can be tuned (0.0 implies orthogonal or better)
+            
+            if not is_relevant:
+                 print(f"⚠️ Warning: Low relevance detected ({relevance_val:.4f}). Image/Review mismatch.")
+                 # Option: Penalize score or return warning
+            
+            # Convert from 0-1 normalized scale back to 1-10 scale
+            converted_score = 1 + normalized_score.cpu().item() * 9
+            print("converted score", converted_score)
+           
+            
+            # Clamp to valid range
+            final_score = max(1.0, min(10.0, converted_score))
+            print("final score", final_score)
+
         # Compile results
         result = {
-            "score": final_score,
-            "recommendation": recommendation,
-            "components": {
-                "sentiment": {
-                    "label": sentiment_label, 
-                    "score": sentiment_score
+            'final_score': final_score,
+            'recommendation': self._get_recommendation(final_score),
+            'relevance': {
+                'score': relevance_val,
+                'is_relevant': is_relevant
+            },
+            'components': {
+                'sentiment': {
+                    'label': sentiment_label,
+                    'scores': sentiment_scores
                 },
-                "visual": {     
-                    "label": image_label, 
-                    "score": image_score 
-                },
-                "fusion": {
-                    "normalized_score": normalized_score,
-                    "relevance_similarity": similarity
+                'image': {
+                    'label': image_label,
+                    'confidence': float(max_score) # Ensure standard float
                 }
             }
         }

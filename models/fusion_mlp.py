@@ -32,6 +32,13 @@ class MultimodalFusion(nn.Module):
         # Cross Attention: Text queries Image
         self.cross_attention = CrossModalAttention(embed_dim=input_dim, num_heads=8, dropout=dropout)
         
+        # Relevance Projector: Project Text to match Attended Image features
+        self.text_projector = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.LayerNorm(input_dim),
+            nn.ReLU()
+        )
+
         # Fusion Network
         # Input to fusion is [Attended_Text_CLS, ViT_CLS] -> 768 + 768 = 1536
         fusion_input_dim = input_dim * 2 
@@ -54,11 +61,6 @@ class MultimodalFusion(nn.Module):
             nn.Sigmoid()
         )
         
-        # Projection Heads for Contrastive Learning (Relevance)
-        proj_dim = 256
-        self.txt_proj = nn.Linear(input_dim, proj_dim)
-        self.img_proj = nn.Linear(input_dim, proj_dim)
-        
         # Initialize weights
         self._init_weights()
 
@@ -69,17 +71,19 @@ class MultimodalFusion(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
         
-        # Init projections
-        nn.init.xavier_uniform_(self.txt_proj.weight)
-        nn.init.constant_(self.txt_proj.bias, 0)
-        nn.init.xavier_uniform_(self.img_proj.weight)
-        nn.init.constant_(self.img_proj.bias, 0)
+        # Init projector
+        for m in self.text_projector:
+             if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
 
     def forward(self, vit_sequences, text_cls):
         """
         Args:
             vit_sequences: (Batch, Seq_len_Img, Dim) - e.g. (B, 197, 768)
             text_cls: (Batch, Dim) - Text CLS token - e.g. (B, 768)
+        Returns:
+            score: (Batch) - Recommendation score
+            relevance: (Batch) - Cosine similarity between image context and text
         """
         device = text_cls.device
         
@@ -98,49 +102,21 @@ class MultimodalFusion(nn.Module):
         attended_text = self.cross_attention(query, key, value)
         attended_text = attended_text.squeeze(1) # (B, 768)
         
-        # 3. Get Image CLS token (assuming index 0 is CLS)
+        # 3. Relevance Check
+        # Project text to same space as attended image features
+        projected_text = self.text_projector(text_cls) # (B, 768)
+        
+        # Calculate Cosine Similarity
+        relevance = F.cosine_similarity(attended_text, projected_text, dim=1) # (B)
+
+        # 4. Get Image CLS token (assuming index 0 is CLS)
         # (B, 197, 768) -> (B, 768)
         image_cls = vit_sequences[:, 0, :]
         
-        # 4. Concatenate
+        # 5. Concatenate
         fused_features = torch.cat([attended_text, image_cls], dim=1) # (B, 1536)
         
-        # 5. MLP Score
+        # 6. MLP Score
         score = self.fusion(fused_features).squeeze(1) # (B)
         
-        return score
-
-    def get_projected_embeddings(self, vit_sequences, text_cls):
-        """
-        Returns projected embeddings for contrastive learning/similarity.
-        """
-        # Pool Image: (B, 197, 768) -> (B, 768) (using CLS at index 0)
-        img_emb = vit_sequences[:, 0, :]
-        
-        # Project
-        img_proj = self.img_proj(img_emb)   
-        txt_proj = self.txt_proj(text_cls) 
-        
-        # Normalize
-        img_proj = F.normalize(img_proj, p=2, dim=1)
-        txt_proj = F.normalize(txt_proj, p=2, dim=1)
-        
-        return img_proj, txt_proj
-
-    def forward_train(self, vit_sequences, text_cls):
-        """
-        Returns (score, img_proj, txt_proj) for training loop.
-        """
-        score = self.forward(vit_sequences, text_cls)
-        img_proj, txt_proj = self.get_projected_embeddings(vit_sequences, text_cls)
-        return score, img_proj, txt_proj
-
-    def compute_similarity(self, vit_sequences, text_cls):
-        """
-        Compute cosine similarity between image and text.
-        Returns: (B) tensor of similarity scores [-1, 1].
-        """
-        img_proj, txt_proj = self.get_projected_embeddings(vit_sequences, text_cls)
-        # Cosine similarity is just dot product of normalized vectors
-        similarity = (img_proj * txt_proj).sum(dim=1) 
-        return similarity * 9
+        return score, relevance

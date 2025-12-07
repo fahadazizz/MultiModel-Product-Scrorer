@@ -122,38 +122,9 @@ class FusionDataset(Dataset):
 # ==============================
 # TRAINING FUNCTIONS
 # ==============================
-def info_nce_loss(features_a, features_b, temperature=0.07):
-    """
-    Computes InfoNCE loss.
-    Args:
-        features_a: (B, Dim) - e.g. Image embeddings
-        features_b: (B, Dim) - e.g. Text embeddings
-    Returns:
-        loss: Scalar tensor
-    """
-    # Normalize features if not already done (though model does it)
-    features_a = F.normalize(features_a, p=2, dim=1)
-    features_b = F.normalize(features_b, p=2, dim=1)
-    
-    # Similarity matrix: (B, B)
-    logits = torch.matmul(features_a, features_b.T) / temperature
-    
-    # Labels: diagonal elements are positives
-    batch_size = features_a.shape[0]
-    labels = torch.arange(batch_size).to(features_a.device)
-    
-    # Cross Entropy Loss
-    loss_i = F.cross_entropy(logits, labels)
-    loss_t = F.cross_entropy(logits.T, labels)
-    
-    return (loss_i + loss_t) / 2
-
-def train_epoch(model, loader, opt, loss_fn):
+def train_epoch(model, loader, opt, loss_fn, contrastive_fn):
     model.train()
     total_loss = 0
-    mse_loss = 0
-    con_loss = 0
-    
     for batch in tqdm(loader, desc="Training"):
         vit = batch["vit_features"].to(config.DEVICE)
         txt = batch["text_features"].to(config.DEVICE)
@@ -161,41 +132,45 @@ def train_epoch(model, loader, opt, loss_fn):
 
         opt.zero_grad()
         
-        # Used forward_train to get projections
-        pred, img_proj, txt_proj = model.forward_train(vit, txt)
-        
-        # 1. MSE Loss (Score)
+        # 1. Positive Pair Pass (Real Image, Real Text)
+        pred, rel_pos = model(vit, txt)
         loss_mse = loss_fn(pred, target)
         
-        # Check for NaN in MSE
-        if torch.isnan(loss_mse):
-            print(f"❌ NaN MSE loss detected! Skipping batch.")
-            continue
+        # Contrastive Loss (Positive): Target 1 (Similar)
+        # CosineEmbeddingLoss expects target 1 or -1
+        # rel_pos is actually cosine similarity output (-1 to 1), but CosineEmbeddingLoss takes embeddings. 
+        # Wait, our model outputs similarity directly. CosineEmbeddingLoss takes (input1, input2, target).
+        # But we computed similarity inside the model. 
+        # So we should actually just use MSE or simple distance on the similarity score?
+        # NO, typically Contrastive Loss is defined on embeddings.
+        # Let's check model output again. It returns `relevance` which is F.cosine_similarity(a, b).
+        # If we want to use PyTorch's CosineEmbeddingLoss, we need the vectors `attended_text` and `projected_text` OUTSIDE.
+        # But our model returns the SCORE.
+        # So we can define our own simple loss on the score:
+        # Loss_Pos = (1 - rel_pos).mean()  -> Minimize distance from 1
+        # Loss_Neg = max(0, rel_neg - margin).mean() -> Minimize similarity (push to component orthogonal or opposite)
+        # Let's do that manually.
+        
+        loss_aux_pos = torch.mean(1.0 - rel_pos)
+        
+        # 2. Negative Pair Pass (Real Image, mismatched Text)
+        # Shift text tensor by 1 to create mismatch
+        txt_neg = torch.roll(txt, shifts=1, dims=0)
+        _, rel_neg = model(vit, txt_neg)
+        
+        # Loss Neg: We want rel_neg to be low (e.g. < 0 or < margin). 
+        # Standard Hinge Loss: max(0, rel_neg - margin) where margin is e.g. 0.2
+        margin = 0.2
+        loss_aux_neg = torch.mean(F.relu(rel_neg - margin))
+        
+        # Total Loss
+        loss = loss_mse + 0.5 * (loss_aux_pos + loss_aux_neg)
 
-        # 2. Contrastive Loss (Relevance)
-        loss_con = info_nce_loss(img_proj, txt_proj)
-        
-        # Combine: Score is main goal, Relevance is auxiliary.
-        # Alpha: 0.5 seems reasonable to balance learning representation vs scoring.
-        total_batch_loss = loss_mse + 0.5 * loss_con
-        
-        if torch.isnan(total_batch_loss):
-            print(f"❌ NaN Total Ioss detected! Skipping batch.")
-            continue
-            
-        total_batch_loss.backward()
+        loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        
-        total_loss += total_batch_loss.item()
-        mse_loss += loss_mse.item()
-        con_loss += loss_con.item()
-        
-    avg_loss = total_loss / len(loader)
-    avg_mse = mse_loss / len(loader)
-    avg_con = con_loss / len(loader)
-    
-    return avg_loss, avg_mse, avg_con
+        total_loss += loss.item()
+    return total_loss / len(loader)
 
 def evaluate(model, loader, loss_fn):
     model.eval()
@@ -205,7 +180,7 @@ def evaluate(model, loader, loss_fn):
             vit = batch["vit_features"].to(config.DEVICE)
             txt = batch["text_features"].to(config.DEVICE)
             score = batch["score"].to(config.DEVICE)
-            pred = model(vit, txt)
+            pred, _ = model(vit, txt) # Unpack tuple, ignore relevance for metrics
             preds.extend((1 + pred.cpu().numpy() * 9))
             trues.extend(batch["original_score"].numpy())
     rmse = np.sqrt(mean_squared_error(trues, preds))
@@ -240,10 +215,10 @@ def train_fusion_model():
 
     for epoch in range(config.NUM_EPOCHS):
         print(f"\nEpoch {epoch+1}/{config.NUM_EPOCHS}")
-        train_loss, train_mse, train_con = train_epoch(model, train_loader, opt, loss_fn)
+        train_loss = train_epoch(model, train_loader, opt, loss_fn, None) # removed contrastive_fn arg dependency
         rmse, mae, r2 = evaluate(model, val_loader, loss_fn)
         scheduler.step(rmse)
-        print(f"Train Loss: {train_loss:.5f} (MSE: {train_mse:.5f}, Con: {train_con:.5f})")
+        print(f"Train Loss: {train_loss:.5f}")
         print(f"RMSE: {rmse:.4f} | MAE: {mae:.4f} | R2: {r2:.4f}")
 
         if rmse < best_rmse:
