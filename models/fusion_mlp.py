@@ -114,7 +114,7 @@ class MultimodalFusion(nn.Module):
         # 3. Get Image CLS token
         image_cls = vit_sequences[:, 0, :]
         
-        # 4. Concatenate
+        # 4. Concatenatee
         fused_features = torch.cat([attended_text, image_cls], dim=1) # (B, 1536)
         
         # 5. Heads

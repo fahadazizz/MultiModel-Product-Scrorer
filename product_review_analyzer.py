@@ -150,7 +150,7 @@ class ProductReviewAnalyzer:
                 },
                 'image': {
                     'label': image_label,
-                    'confidence': float(max_score) # Ensure standard float
+                    'confidence': float(max_score) 
                 }
             }
         }

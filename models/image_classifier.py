@@ -33,7 +33,7 @@ class ImageClassifier:
         return logits, predicted_class, predicted_label
 
     def get_embeddings(self, image):
-        # Preprocess image
+        # Preprocess imag
         inputs = self.processor(images=image, return_tensors="pt", padding=True)
         
         # Get features from ViTModel with pooling

@@ -6,7 +6,7 @@ import re
 import ssl
 
 
-# Download necessary NLTK data
+# Download necessary NLTK daa
 try:
     nltk.data.find('corpora/stopwords')
 except LookupError:

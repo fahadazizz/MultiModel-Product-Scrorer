@@ -18,12 +18,12 @@ from transformers import (
     AutoTokenizer,
     RobertaModel,
     ViTImageProcessor,
-    ViTModel
+    ViTModel 
 )
 
-# ==============================
+# =============================
 # CONFIG
-# ==============================
+# =============================
 class Config:
     BATCH_SIZE = 64
     LEARNING_RATE = 5e-4

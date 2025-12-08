@@ -34,7 +34,7 @@ async def classify_image(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(contents)).convert('RGB')
         
         logits, _, label = analyzer.image_classifier.predict(image)
-        # Get max confidence score
+        # Get max confidence scores
         confidences = torch.softmax(logits, dim=1)
         max_score = torch.max(confidences).item()
         

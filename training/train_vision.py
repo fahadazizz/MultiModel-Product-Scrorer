@@ -136,7 +136,7 @@ def train_vision_model(
         logging_strategy="steps",
         logging_steps=10,
         logging_first_step=True,
-        report_to="none"  # Force output to console
+        report_to="none"  
     )
     
     trainer = Trainer(

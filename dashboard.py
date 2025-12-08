@@ -171,9 +171,7 @@ with tab3:
                             rel = components['relevance']
                             st.metric("Score", f"{rel['score']:.3f}")
                             st.progress(rel['score'])
-                            
-            
-                            
+                                
                     else:
                         st.error(f"Error: {response.text}")
                 except Exception as e:

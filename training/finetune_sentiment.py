@@ -138,7 +138,7 @@ def finetune_sentiment(
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
     
-    # Evaluate on validation set
+    # Evaluate on validation sets
     print("Evaluating...")
     metrics = trainer.evaluate()
     print(f"Evaluation metrics: {metrics}")

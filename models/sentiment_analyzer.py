@@ -41,7 +41,7 @@ class SentimentAnalyzer:
     
     def get_embeddings(self, text):
         """
-        Extract text embeddings from RoBERTa's CLS token.
+        Extract text embedding from RoBERTa's CLS token.
         Args:
             text: String or list of strings
         Returns:
