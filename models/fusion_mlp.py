@@ -32,18 +32,11 @@ class MultimodalFusion(nn.Module):
         # Cross Attention: Text queries Image
         self.cross_attention = CrossModalAttention(embed_dim=input_dim, num_heads=8, dropout=dropout)
         
-        # Relevance Projector: Project Text to match Attended Image features
-        self.text_projector = nn.Sequential(
-            nn.Linear(input_dim, input_dim),
-            nn.LayerNorm(input_dim),
-            nn.ReLU()
-        )
-
-        # Fusion Network
+        # Fusion Network (Score Head)
         # Input to fusion is [Attended_Text_CLS, ViT_CLS] -> 768 + 768 = 1536
         fusion_input_dim = input_dim * 2 
         
-        self.fusion = nn.Sequential(
+        self.score_head = nn.Sequential(
             nn.Linear(fusion_input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
@@ -61,20 +54,38 @@ class MultimodalFusion(nn.Module):
             nn.Sigmoid()
         )
         
+        # Relevance Head (Classification)
+        # Takes same fused features, outputs probability of relevance
+        self.relevance_head = nn.Sequential(
+            nn.Linear(fusion_input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Linear(hidden_dim, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+        
         # Initialize weights
         self._init_weights()
 
     def _init_weights(self):
-        for m in self.fusion:
+        for m in self.score_head:
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
         
-        # Init projector
-        for m in self.text_projector:
-             if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
+        for m in self.relevance_head:
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, vit_sequences, text_cls):
         """
@@ -82,13 +93,12 @@ class MultimodalFusion(nn.Module):
             vit_sequences: (Batch, Seq_len_Img, Dim) - e.g. (B, 197, 768)
             text_cls: (Batch, Dim) - Text CLS token - e.g. (B, 768)
         Returns:
-            score: (Batch) - Recommendation score
-            relevance: (Batch) - Cosine similarity between image context and text
+            score: (Batch) - Recommendation score (0-1)
+            relevance: (Batch) - Relevance probability (0-1)
         """
         device = text_cls.device
         
         # 1. Prepare Inputs
-        # Text CLS needs to be sequence for attention: (B, 768) -> (B, 1, 768)
         if text_cls.dim() == 2:
             query = text_cls.unsqueeze(1)
         else:
@@ -98,25 +108,17 @@ class MultimodalFusion(nn.Module):
         value = vit_sequences
         
         # 2. Cross-Modal Attention (Text queries Image)
-        # Output: (B, 1, 768)
         attended_text = self.cross_attention(query, key, value)
         attended_text = attended_text.squeeze(1) # (B, 768)
         
-        # 3. Relevance Check
-        # Project text to same space as attended image features
-        projected_text = self.text_projector(text_cls) # (B, 768)
-        
-        # Calculate Cosine Similarity
-        relevance = F.cosine_similarity(attended_text, projected_text, dim=1) # (B)
-
-        # 4. Get Image CLS token (assuming index 0 is CLS)
-        # (B, 197, 768) -> (B, 768)
+        # 3. Get Image CLS token
         image_cls = vit_sequences[:, 0, :]
         
-        # 5. Concatenate
+        # 4. Concatenate
         fused_features = torch.cat([attended_text, image_cls], dim=1) # (B, 1536)
         
-        # 6. MLP Score
-        score = self.fusion(fused_features).squeeze(1) # (B)
+        # 5. Heads
+        score = self.score_head(fused_features).squeeze(1) # (B)
+        relevance = self.relevance_head(fused_features).squeeze(1) # (B)
         
         return score, relevance

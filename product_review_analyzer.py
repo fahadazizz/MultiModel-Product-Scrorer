@@ -120,7 +120,7 @@ class ProductReviewAnalyzer:
             
             # Check Relevance
             relevance_val = relevance_score.item()
-            is_relevant = relevance_val > 0.0 # Threshold can be tuned (0.0 implies orthogonal or better)
+            is_relevant = relevance_val > 0.5 # Threshold for Sigmoid Probability
             
             if not is_relevant:
                  print(f"⚠️ Warning: Low relevance detected ({relevance_val:.4f}). Image/Review mismatch.")
