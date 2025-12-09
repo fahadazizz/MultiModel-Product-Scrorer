@@ -1,45 +1,80 @@
-# Multimodel Product Review Analyzer
+# 🛍️ Multimodel Product Review Analyzer
 
-A production-ready system that analyzes product reviews using multimodel AI to generate intelligent recommendation scores by combining image analysis, sentiment analysis, and semantic text embeddings.
+A production-ready **multimodal AI system** that analyzes product images and customer reviews to generate intelligent recommendation scores using **Cross-Modal Attention**.
 
-## Features
+## ✨ Key Features
 
-- **Dual-Model Architecture**: Vision Transformer (ViT) for images + Fine-tuned RoBERTa for text
-- **Unified Text Processing**: Single RoBERTa model handles both sentiment analysis and text embeddings
-- **LoRA Fine-Tuning**: Parameter-efficient fine-tuning (only 0.94% trainable parameters)
-- **Advanced Text Preprocessing**: Lemmatization, stopword removal, punctuation cleaning
-- **Weighted Fusion Layer**: Combines sentiment (40%), image confidence (30%), and relevance (30%)
-- **Comprehensive Evaluation**: F1, accuracy, and precision metrics
+- **Cross-Modal Attention**: Text reviews attend to relevant image patches for context-aware fusion
+- **Fine-tuned Backbones**: ViT for images + RoBERTa for text (both domain-adapted)
+- **End-to-End Pipeline**: From raw image/text → recommendation score (1-10)
+- **FastAPI Backend**: Production-ready REST endpoints
+- **Streamlit Dashboard**: Interactive UI for analysis
 
-## Architecture
+---
+
+## 🏗️ Architecture
 
 ```
-┌─────────────────┐         ┌──────────────────────┐
-│  Product Image  │         │   Review Text        │
-└────────┬────────┘         └──────────┬───────────┘
-         │                             │
-         ▼                             ▼
-┌─────────────────┐         ┌──────────────────────┐
-│  ViT Classifier │         │  RoBERTa (Fine-tuned)│
-│  (Image Emb +   │         │  • Sentiment (head)  │
-│   Classification)│         │  • Embeddings (CLS)  │
-└────────┬────────┘         └──────────┬───────────┘
-         │                             │
-         │                             │
-         └─────────────┬───────────────┘
-                       ▼
-              ┌────────────────┐
-              │  Fusion Layer  │
-              │  (Weighted Sum)│
-              └────────┬───────┘
-                       ▼
-              ┌────────────────┐
-              │ Recommendation │
-              │     Score      │
-              └────────────────┘
+                    ┌─────────────────────────────────────────────────────────┐
+                    │                   FROZEN BACKBONES                       │
+                    │  ┌─────────────────┐         ┌──────────────────────┐   │
+                    │  │  Product Image  │         │    Review Text       │   │
+                    │  └────────┬────────┘         └──────────┬───────────┘   │
+                    │           │                             │               │
+                    │           ▼                             ▼               │
+                    │  ┌─────────────────┐         ┌──────────────────────┐   │
+                    │  │   ViT-Base      │         │   RoBERTa-Base       │   │
+                    │  │ (Fine-tuned)    │         │   (Fine-tuned)       │   │
+                    │  └────────┬────────┘         └──────────┬───────────┘   │
+                    │           │                             │               │
+                    │           ▼                             ▼               │
+                    │  Image Sequence               Text Sequence             │
+                    │  (B, 197, 768)                (B, 128, 768)             │
+                    └───────────┬─────────────────────────┬───────────────────┘
+                                │                         │
+                                └───────────┬─────────────┘
+                                            │
+                    ┌───────────────────────▼───────────────────────┐
+                    │              TRAINABLE FUSION                  │
+                    │  ┌─────────────────────────────────────────┐  │
+                    │  │        Cross-Modal Attention            │  │
+                    │  │   Q = Text Tokens, K = V = Image Patches │  │
+                    │  │         (8 attention heads)             │  │
+                    │  └──────────────────┬──────────────────────┘  │
+                    │                     │                         │
+                    │                     ▼                         │
+                    │  ┌─────────────────────────────────────────┐  │
+                    │  │           Pooling + Concat              │  │
+                    │  │  [Mean(Attended_Text), CLS(Image)]      │  │
+                    │  │           Shape: (B, 1536)              │  │
+                    │  └──────────────────┬──────────────────────┘  │
+                    │                     │                         │
+                    │                     ▼                         │
+                    │  ┌─────────────────────────────────────────┐  │
+                    │  │           MLP Score Head                │  │
+                    │  │    1536 → 512 → 128 → 32 → 1 (σ)        │  │
+                    │  └──────────────────┬──────────────────────┘  │
+                    └─────────────────────┼─────────────────────────┘
+                                          │
+                                          ▼
+                              ┌────────────────────┐
+                              │ Recommendation     │
+                              │ Score (1-10)       │
+                              └────────────────────┘
 ```
 
-## Quick Start
+### Why Cross-Modal Attention?
+
+Instead of simple concatenation, our model uses **text-queries-image attention**:
+- Text tokens can "look at" relevant image patches
+- If review says "cracked screen", attention focuses on screen regions
+- Results in context-aware, semantically meaningful fusion
+
+---
+
+
+
+## 🚀 Quick Start
 
 ### Installation
 
@@ -47,122 +82,79 @@ A production-ready system that analyzes product reviews using multimodel AI to g
 pip install -r requirements.txt
 ```
 
-### Basic Usage
+### Run the API Server
 
-```python
-from main import ProductReviewAnalyzer
-
-# Initialize with fine-tuned model
-analyzer = ProductReviewAnalyzer(
-    finetuned_sentiment_path="models/finetuned_roberta"
-)
-
-# Analyze a product
-result = analyzer.analyze(
-    image_path="path/to/product.jpg",
-    review_text="This product is amazing! Highly recommend."
-)
-
-print(f"Score: {result['final_score']:.3f}")
-print(f"Recommendation: {result['recommendation']}")
-print(f"Sentiment: {result['components']['sentiment']['label']}")
+```bash
+python3 main.py
 ```
 
-### Streamlit Dashboard
+API endpoints:
+- `POST /classify-image` - Classify product image
+- `POST /analyze-text` - Analyze review sentiment
+- `POST /recommend` - Full multimodal recommendation
+
+### Run the Dashboard
 
 ```bash
 streamlit run dashboard.py
 ```
 
-### FastAPI Server
+---
 
-```bash
-uvicorn main:app --reload
+## 💻 Python Usage
+
+```python
+from product_review_analyzer import ProductReviewAnalyzer
+
+# Initialize
+analyzer = ProductReviewAnalyzer(
+    fusion_model_path="models/trained/CrossAttentMLP.pth"
+)
+
+# Analyze
+result = analyzer.analyze(
+    image_path="path/to/product.jpg",
+    reviews="Amazing product! The quality is excellent."
+)
+
+print(f"Score: {result['final_score']:.1f}/10")
+print(f"Recommendation: {result['recommendation']}")
 ```
 
-### Fine-Tuning
+---
 
+## 🎯 Training Pipeline
+
+### 1. Fine-tune ViT (Image Classification)
 ```bash
-# Fine-tune RoBERTa on your dataset
+python training/finetune_vit.py
+```
+
+### 2. Fine-tune RoBERTa (Sentiment Analysis)
+```bash
 python training/finetune_sentiment.py
 ```
 
-The script includes:
-
-- Text preprocessing (lowercasing, lemmatization, stopword removal)
-- LoRA configuration for efficient fine-tuning
-- Evaluation metrics (F1, accuracy, precision)
-
-### Verification
-
+### 3. Train Cross-Modal Fusion
 ```bash
-# Run end-to-end tests
-python verify.py
+python training/fusion_trainer.py
 ```
 
-## Models Used
+---
 
-| Model                                              | Purpose                              | Source      |
-| -------------------------------------------------- | ------------------------------------ | ----------- |
-| `google/vit-base-patch16-224`                      | Image classification & embeddings    | HuggingFace |
-| `cardiffnlp/twitter-roberta-base-sentiment-latest` | Sentiment analysis & text embeddings | HuggingFace |
+## 📊 Model Performance
 
-## Fine-Tuning Results
+| Component | Metric | Value |
+|-----------|--------|-------|
+| **Fusion Model** | RMSE | 0.695 |
+| **Fusion Model** | Parameters | 3.2M |
+| **ViT** | Accuracy | ~85% |
+| **RoBERTa** | F1 Score | ~75% |
 
-Trained on 200 samples (CPU-optimized):
+## 🛠️ Tech Stack
 
-- **Accuracy**: 75.0%
-- **F1 Score**: 75.0%
-- **Precision**: 75.1%
-- **Trainable Parameters**: 1.18M / 125.8M (0.94%)
-
-## Example Output
-
-```
-Final Score: 0.840
-Recommendation: Highly Recommended
-
-Component Scores:
-  - Sentiment: positive (0.985)
-  - Image Confidence: 0.994
-  - Relevance: 0.493
-```
-
-## Requirements
-
-- Python 3.8+
-- PyTorch
-- Transformers
-- PEFT (for LoRA)
-- scikit-learn
-- NLTK
-- Pillow
-
-See `requirements.txt` for full list.
-
-## Key Design Decisions
-
-### Why RoBERTa for Both Tasks?
-
-Instead of using separate models (e.g., MiniLM for embeddings), we use **one RoBERTa model** for:
-
-1. **Sentiment Classification** (via classification head)
-2. **Text Embeddings** (via CLS pooler_output)
-
-Benefits:
-
-- Reduced memory footprint
-- Semantic consistency between tasks
-- Fine-tuning improves both simultaneously
-- Simpler deployment
-
-### Fusion Layer Weights
-
-```python
-weights = {
-    'sentiment': 0.4,        # Primary signal
-    'image_confidence': 0.3, # Product quality indicator
-    'relevance': 0.3         # Image-text alignment
-}
-```
-
+- **PyTorch** - Deep learning framework
+- **Transformers** - ViT and RoBERTa models
+- **FastAPI** - REST API
+- **Streamlit** - Dashboard UI
+- **PEFT** - LoRA fine-tuning

@@ -16,9 +16,11 @@ analyzer = None
 @app.on_event("startup")
 async def startup_event():
     global analyzer
-    analyzer = ProductReviewAnalyzer(finetuned_sentiment_path="models/trained/finetuned_roberta_fahad", 
-    finetuned_vit_path="models/trained/finetuned_vit_fahad", 
-    fusion_model_path="models/trained/fusion_multimodelMLP.pth")
+    analyzer = ProductReviewAnalyzer(
+        finetuned_sentiment_path="models/trained/finetuned_roberta_fahad", 
+        finetuned_vit_path="models/trained/finetuned_vit_fahad", 
+        fusion_model_path="models/trained/CrossAttentMLP.pth"
+    )
 
 class TextAnalysisRequest(BaseModel):
     text: str

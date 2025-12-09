@@ -39,26 +39,28 @@ class SentimentAnalyzer:
         
         return result_scores, predicted_label
     
-    def get_embeddings(self, text):
+    def get_sequence_embeddings(self, text, max_length=128):
         """
-        Extract text embedding from RoBERTa's CLS token.
+        Extract FULL sequence embeddings from RoBERTa (for Cross-Modal Attention).
         Args:
             text: String or list of strings
+            max_length: Maximum sequence length
         Returns:
-            embeddings: Tensor of shape (batch_size, hidden_size) or (hidden_size,) for single text
+            sequence_embeddings: Tensor of shape (batch_size, seq_len, hidden_size)
+            attention_mask: Tensor of shape (batch_size, seq_len)
         """
         if isinstance(text, str):
             text = [text]
 
-        # Tokenize input
         encoded_input = self.tokenizer(
-            text, return_tensors='pt', padding=True, truncation=True, max_length=512
+            text, 
+            return_tensors='pt', 
+            padding='max_length', 
+            truncation=True, 
+            max_length=max_length
         )
 
         with torch.no_grad():
-            # Forward pass through RobertaModel (base model)
             output = self.roberta_model(**encoded_input)
 
-        embedding = output.last_hidden_state[:, 0, :]
-
-        return embedding
+        return output.last_hidden_state, encoded_input['attention_mask']

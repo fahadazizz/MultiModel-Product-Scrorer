@@ -32,20 +32,6 @@ class ImageClassifier:
         
         return logits, predicted_class, predicted_label
 
-    def get_embeddings(self, image):
-        # Preprocess imag
-        inputs = self.processor(images=image, return_tensors="pt", padding=True)
-        
-        # Get features from ViTModel with pooling
-        with torch.no_grad():
-            outputs = self.vitModel(**inputs, output_hidden_states=True, add_pooling_layer=True)
-        
-        # Use the pooler_output as the CLS embedding
-        cls_embedding = outputs.pooler_output  # shape: (batch_size, hidden_size)
-        # print(cls_embedding.shape)
-        
-        return cls_embedding
-
     def get_sequence_embeddings(self, image):
         """
         Get the full sequence of embeddings (last_hidden_state) from ViT.

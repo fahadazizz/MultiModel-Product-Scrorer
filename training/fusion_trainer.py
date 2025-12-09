@@ -1,358 +1,419 @@
+
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import Dataset, DataLoader
-from models.fusion_mlp import MultimodalFusion
-import glob
-
+from typing import Dict, Any, Optional
+from fusion_models import MultimodalFusionWithAttention
 from transformers import (
     AutoTokenizer,
     RobertaModel,
     ViTImageProcessor,
-    ViTModel 
+    ViTModel
 )
 
-# =============================
+
+# ==============================
 # CONFIG
-# =============================
+# ==============================
 class Config:
-    BATCH_SIZE = 64
-    LEARNING_RATE = 5e-4
+    # Training hyperparameters
+    BATCH_SIZE = 16  # Reduced due to sequence processing memory
+    LEARNING_RATE = 1e-4
     NUM_EPOCHS = 25
     DROPOUT = 0.2
+    ATTENTION_DROPOUT = 0.1
+    NUM_HEADS = 8
+
+    # Device
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    VIT_PATH = "models/trained/finetuned_vit_fahad"
-    ROBERTA_PATH = "models/trained/finetuned_roberta_fahad"
-    DATA_PATH = "dataset/products_augmented.csv"
-    IMAGE_DIR = "dataset/" 
-    SAVE_PATH = "models/trained/fusion_mlp_final.pth"
+    # Model paths - adjust these as needed
+    VIT_PATH = "/content/drive/MyDrive/trained/finetuned_vit_fahad"
+    ROBERTA_PATH = "/content/drive/MyDrive/trained/finetuned_roberta_fahad"
+
+    # Data paths - adjust these as needed
+    DATA_PATH = "/content/drive/MyDrive/CrossAttention/products_augmented.csv"
+    IMAGE_DIR = "/content/drive/MyDrive/CrossAttention/"
+
+    # Save path
+    SAVE_PATH = "/content/drive/MyDrive/trained/CrossAttentMLP.pth"
+
+    # Text processing
+    MAX_TEXT_LENGTH = 128
+
+    # Embedding dimension (ViT-Base and RoBERTa-Base both use 768)
+    EMBED_DIM = 768
+
 
 config = Config()
 
+
 # ==============================
-# FEATURE EXTRACTORS
+# FEATURE EXTRACTORS (SEQUENCE MODE)
 # ==============================
-class FeatureExtractors:
-    def __init__(self):
-        print("\nLoading pretrained models...")
+class SequenceFeatureExtractors:
 
-        self.vit_model = ViTModel.from_pretrained(config.VIT_PATH).to(config.DEVICE).eval()
-        self.vit_processor = ViTImageProcessor.from_pretrained(config.VIT_PATH, use_safetensors=True)
 
-        self.roberta_model = RobertaModel.from_pretrained(config.ROBERTA_PATH, use_safetensors=True).to(config.DEVICE).eval()
-        self.roberta_tokenizer = AutoTokenizer.from_pretrained(config.ROBERTA_PATH)
+    def __init__(self, vit_path: str, roberta_path: str, device: torch.device):
+        print("\nLoading pretrained models for sequence extraction...")
 
+        # ViT Model
+        self.vit_model = ViTModel.from_pretrained(vit_path).to(device).eval()
+        self.vit_processor = ViTImageProcessor.from_pretrained(vit_path)
+
+        # RoBERTa Model
+        self.roberta_model = RobertaModel.from_pretrained(roberta_path).to(device).eval()
+        self.roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_path)
+
+        self.device = device
         print("Models loaded successfully!")
 
     @torch.no_grad()
-    def get_vit_embedding(self, pixel_values):
-        pixel_values = pixel_values.to(config.DEVICE)
-        outputs = self.vit_model(pixel_values, output_hidden_states=True)
-        return outputs.last_hidden_state  # Return sequence: (B, 197, 768)
+    def get_image_sequence(self, pixel_values: torch.Tensor) -> torch.Tensor:
+
+        pixel_values = pixel_values.to(self.device)
+        outputs = self.vit_model(pixel_values, output_hidden_states=False)
+        # last_hidden_state contains the full sequence
+        return outputs.last_hidden_state  # (B, N_patches+1, D)
 
     @torch.no_grad()
-    def get_text_embedding(self, input_ids, attention_mask):
-        input_ids = input_ids.to(config.DEVICE)
-        attention_mask = attention_mask.to(config.DEVICE)
-        outputs = self.roberta_model(input_ids=input_ids, attention_mask=attention_mask)
-        return outputs.last_hidden_state[:, 0, :]
+    def get_text_sequence(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        outputs = self.roberta_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=False
+        )
+        return outputs.last_hidden_state  # (B, seq_len, D)
+
 
 # ==============================
-# PRECOMPUTE EMBEDDINGS
+# DATASET (RAW INPUTS)
 # ==============================
-def precompute_embeddings(df, fe):
-    vit_embs, txt_embs, scores = [], [], []
+class FusionDatasetRaw(Dataset):
 
-    valid_indices = []
-    
-    loader = DataLoader(df.to_dict("records"), batch_size=16, shuffle=False)
-    print("\nPrecomputing embeddings...")
 
-    for i, batch in enumerate(tqdm(loader)):
-        batch_images = []
-        batch_valid_mask = []
-        
-        # Load and process images safely
-        for img_path in batch["image_path"]:
-            full_path = os.path.join(config.IMAGE_DIR, str(img_path).lstrip('/'))
-            try:
-                if not os.path.exists(full_path):
-                    raise FileNotFoundError(f"Image not found: {full_path}")
-                    
-                image = Image.open(full_path).convert("RGB")
-                inputs = fe.vit_processor(images=image, return_tensors="pt")
-                batch_images.append(inputs["pixel_values"])
-                batch_valid_mask.append(True)
-            except Exception as e:
-                print(f"Skipping corrupt image {full_path}: {e}")
-                batch_images.append(torch.zeros(1, 3, 224, 224)) # Placeholder to keep batch alignment for now
-                batch_valid_mask.append(False)
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        image_dir: str,
+        vit_processor: ViTImageProcessor,
+        tokenizer: AutoTokenizer,
+        max_length: int = 128
+    ):
+        self.df = df.reset_index(drop=True)
+        self.image_dir = image_dir
+        self.vit_processor = vit_processor
+        self.tokenizer = tokenizer
+        self.max_length = max_length
 
-        if not batch_images:
-            continue
-            
-        pixel_values = torch.cat(batch_images, dim=0).to(config.DEVICE)
-        
-        # Only compute embeddings for valid images to save compute, but for simplicity here we compute all and mask later
-        # Actually better to just compute all and filter before appending to lists
-        with torch.no_grad():
-            vit_feat = fe.get_vit_embedding(pixel_values).cpu()
+    def __len__(self) -> int:
+        return len(self.df)
 
-        texts = [str(t) for t in batch["review_text"]]
-        tokenized = fe.roberta_tokenizer(texts, truncation=True, padding=True, max_length=128, return_tensors="pt")
-        with torch.no_grad():
-            txt_feat = fe.get_text_embedding(tokenized["input_ids"], tokenized["attention_mask"]).cpu()
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        row = self.df.iloc[idx]
 
-        # Process scores and filter invalid
-        for idx, valid in enumerate(batch_valid_mask):
-            if not valid:
-                continue
-                
-            s = batch["score"][idx]
-            if pd.isna(s):
-                continue
-                
-            norm_score = (float(s) - 1) / 9.0
-            
-            vit_embs.append(vit_feat[idx].unsqueeze(0))
-            txt_embs.append(txt_feat[idx].unsqueeze(0))
-            scores.append(torch.tensor([norm_score]))
+        # Load and process image
+        img_path = os.path.join(self.image_dir, row['image_path'])
+        try:
+            image = Image.open(img_path).convert('RGB')
+            pixel_values = self.vit_processor(
+                images=image,
+                return_tensors="pt"
+            )['pixel_values'].squeeze(0)  # (3, 224, 224)
+        except Exception as e:
+            print(f"Warning: Could not load image {img_path}: {e}")
+            # Return zeros for failed images
+            pixel_values = torch.zeros(3, 224, 224)
 
-    if not vit_embs:
-        raise ValueError("No valid data found after precomputing embeddings!")
+        # Process text
+        text = str(row['review_text']) if pd.notna(row['review_text']) else "No review"
+        tokenized = self.tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors="pt"
+        )
+        input_ids = tokenized['input_ids'].squeeze(0)  # (seq_len,)
+        attention_mask = tokenized['attention_mask'].squeeze(0)  # (seq_len,)
 
-    return torch.cat(vit_embs, dim=0), torch.cat(txt_embs, dim=0), torch.cat(scores, dim=0)
+        # Normalize score to [0, 1]
+        # Assuming score is in range 1-10
+        score = float(row['score']) if pd.notna(row['score']) else 5.0  # Default to middle score if NaN
+        normalized_score = (score - 1) / 9.0
 
-def precompute_external_embeddings(fe):
-    """
-    Load images from dataset/images/ for external negative sampling.
-    """
-    print("\nPrecomputing external image embeddings (Distractors)...")
-    image_paths = glob.glob("dataset/images/**/*.jpg", recursive=True) + glob.glob("dataset/images/**/*.png", recursive=True)
-    
-    if not image_paths:
-        print("Warning: No external images found in dataset/images/")
-        return None
+        # Clamp to valid range to avoid NaN issues
+        normalized_score = max(0.0, min(1.0, normalized_score))
 
-    vit_embs = []
-    # Process in batches to save memory during inference
-    batch_size = 32
-    for i in range(0, len(image_paths), batch_size):
-        batch_paths = image_paths[i:i+batch_size]
-        batch_images = []
-        for p in batch_paths:
-            try:
-                img = Image.open(p).convert("RGB")
-                inputs = fe.vit_processor(images=img, return_tensors="pt")
-                batch_images.append(inputs["pixel_values"])
-            except Exception as e:
-                print(f"Error loading {p}: {e}")
-                continue
-        
-        if batch_images:
-            pixel_values = torch.cat(batch_images, dim=0).to(config.DEVICE)
-            with torch.no_grad():
-                vit_feat = fe.get_vit_embedding(pixel_values).cpu()
-            vit_embs.append(vit_feat)
-    
-    if vit_embs:
-        return torch.cat(vit_embs, dim=0)
-    return None
-
-# ==============================
-# DATASET
-# ==============================
-class FusionDataset(Dataset):
-    def __init__(self, vit_embs, txt_embs, scores):
-        self.vit = vit_embs
-        self.txt = txt_embs
-        self.scores = scores
-
-    def __len__(self):
-        return len(self.scores)
-
-    def __getitem__(self, i):
         return {
-            "vit_features": self.vit[i],
-            "text_features": self.txt[i],
-            "score": self.scores[i],
-            "original_score": 1 + self.scores[i] * 9
+            'pixel_values': pixel_values,
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'score': torch.tensor(normalized_score, dtype=torch.float32),
+            'original_score': torch.tensor(score, dtype=torch.float32)
         }
 
 
 # ==============================
 # TRAINING FUNCTIONS
 # ==============================
-def train_epoch(model, loader, opt, rec_loss_fn, rel_loss_fn, external_embs=None):
+def train_epoch(
+    model: nn.Module,
+    feature_extractors: SequenceFeatureExtractors,
+    loader: DataLoader,
+    optimizer: optim.Optimizer,
+    loss_fn: nn.Module,
+    device: torch.device
+) -> float:
     model.train()
-    total_loss = 0
-    
-    # Pre-move external embeddings to device if possible or sample batches
-    if external_embs is not None:
-        num_ext = external_embs.size(0)
-    
+    total_loss = 0.0
+
     for batch in tqdm(loader, desc="Training"):
-        vit = batch["vit_features"].to(config.DEVICE)
-        txt = batch["text_features"].to(config.DEVICE)
-        target_score = batch["score"].to(config.DEVICE)
-        
-        batch_size = vit.size(0)
+        # Extract sequence features (frozen backbones)
+        pixel_values = batch['pixel_values'].to(device)
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        target = batch['score'].to(device)
 
-        opt.zero_grad()
-        
-        # ==========================
-        # 1. Positive Pair (Real)
-        # ==========================
-        pred_score, pred_rel = model(vit, txt)
-        
-        # Loss: Score matches target, Relevance = 1
-        loss_rec = rec_loss_fn(pred_score, target_score)
-        loss_rel = rel_loss_fn(pred_rel, torch.ones_like(pred_rel))
-        
-        loss_pos = loss_rec + loss_rel
-        
-        # ==========================
-        # 2. Negative Pair (Internal - Mismatched Text)
-        # ==========================
-        txt_neg = torch.roll(txt, shifts=1, dims=0)
-        pred_score_neg, pred_rel_neg = model(vit, txt_neg)
-        
-        # Loss: Score = 0 (Bad match), Relevance = 0
-        loss_rec_neg = rec_loss_fn(pred_score_neg, torch.zeros_like(pred_score_neg))
-        loss_rel_neg = rel_loss_fn(pred_rel_neg, torch.zeros_like(pred_rel_neg))
-        
-        loss_neg_int = loss_rec_neg + loss_rel_neg
-        
-        # ==========================
-        # 3. Negative Pair (External - Random Image)
-        # ==========================
-        loss_neg_ext = 0
-        if external_embs is not None:
-            # Sample random external images
-            indices = torch.randint(0, num_ext, (batch_size,))
-            full_b_indices = indices # In case batch_size > num_ext (rare if lots of images)
-            
-            ext_vit = external_embs[indices].to(config.DEVICE)
-            
-            # Use current text (it doesn't match the external image)
-            pred_score_ext, pred_rel_ext = model(ext_vit, txt)
-            
-            loss_rec_ext = rec_loss_fn(pred_score_ext, torch.zeros_like(pred_score_ext))
-            loss_rel_ext = rel_loss_fn(pred_rel_ext, torch.zeros_like(pred_rel_ext))
-            
-            loss_neg_ext = loss_rec_ext + loss_rel_ext
+        # Get sequence embeddings from frozen backbones
+        with torch.no_grad():
+            image_seq = feature_extractors.get_image_sequence(pixel_values)
+            text_seq = feature_extractors.get_text_sequence(input_ids, attention_mask)
 
-        # ==========================
-        # Total Loss
-        # ==========================
-        # Balanced: 50% Positive, 25% Neg Int, 25% Neg Ext
-        loss = loss_pos + 0.5 * loss_neg_int + 0.5 * loss_neg_ext
-        
+        # Forward pass through fusion model (trainable)
+        optimizer.zero_grad()
+        pred = model(
+            image_seq=image_seq,
+            text_seq=text_seq,
+            text_attention_mask=attention_mask
+        )
+
+        # Compute loss
+        loss = loss_fn(pred, target)
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
+
+        # Gradient clipping
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        optimizer.step()
         total_loss += loss.item()
-        
+
     return total_loss / len(loader)
 
-def evaluate(model, loader):
-    model.eval()
-    preds_score, trues_score = [], []
-    preds_rel, trues_rel = [], []
-    
-    with torch.no_grad():
-        for batch in loader:
-            vit = batch["vit_features"].to(config.DEVICE)
-            txt = batch["text_features"].to(config.DEVICE)
-            score = batch["score"].to(config.DEVICE)
-            
-            # Forward pass
-            # Note: For evaluation on the positive dataset, we expect Relevance = 1.0
-            pred_score_raw, pred_rel_raw = model(vit, txt)
-            
-            # Score Metrics
-            preds_score.extend((1 + pred_score_raw.cpu().numpy() * 9))
-            trues_score.extend(batch["original_score"].numpy())
-            
-            # Relevance Metrics (Threshold 0.5)
-            # Since the validation set currently only contains Positive pairs (from split),
-            # Trues for relevance are all 1s. 
-            # To get a valid relevance metric, we should ideally inject negatives.
-            # However, for simply checking if the model 'accepts' valid pairs:
-            preds_rel.extend((pred_rel_raw.cpu().numpy() > 0.5).astype(int))
-            trues_rel.extend(np.ones(len(pred_rel_raw))) # We assume validation set is all positive pairs
 
-    # Score Metrics
-    rmse = np.sqrt(mean_squared_error(trues_score, preds_score))
-    mae = mean_absolute_error(trues_score, preds_score)
-    r2 = r2_score(trues_score, preds_score)
-    
-    # Relevance Metrics (Precision/Recall might be boring if all trues are 1, but Accuracy is useful)
-    accuracy = accuracy_score(trues_rel, preds_rel)
-    
-    return rmse, mae, r2, accuracy
+def evaluate(
+    model: nn.Module,
+    feature_extractors: SequenceFeatureExtractors,
+    loader: DataLoader,
+    device: torch.device
+) -> tuple:
+    model.eval()
+    all_preds = []
+    all_targets = []
+
+    with torch.no_grad():
+        for batch in tqdm(loader, desc="Evaluating"):
+            pixel_values = batch['pixel_values'].to(device)
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            original_scores = batch['original_score'].numpy()
+
+            # Get sequence embeddings
+            image_seq = feature_extractors.get_image_sequence(pixel_values)
+            text_seq = feature_extractors.get_text_sequence(input_ids, attention_mask)
+
+            # Forward pass
+            pred = model(
+                image_seq=image_seq,
+                text_seq=text_seq,
+                text_attention_mask=attention_mask
+            )
+
+            # Convert predictions back to 1-10 scale
+            pred_original = 1 + pred.cpu().numpy() * 9
+
+            all_preds.extend(pred_original)
+            all_targets.extend(original_scores)
+
+    # Convert to numpy arrays and filter out NaN values
+    all_preds = np.array(all_preds)
+    all_targets = np.array(all_targets)
+
+    # Check for NaN and filter them out
+    valid_mask = ~(np.isnan(all_preds) | np.isnan(all_targets))
+    if not np.all(valid_mask):
+        print(f"Warning: Found {np.sum(~valid_mask)} NaN values, filtering them out")
+        all_preds = all_preds[valid_mask]
+        all_targets = all_targets[valid_mask]
+
+    if len(all_preds) == 0:
+        print("Error: All predictions are NaN!")
+        return float('inf'), float('inf'), 0.0
+
+    # Calculate metrics
+    rmse = np.sqrt(mean_squared_error(all_targets, all_preds))
+    mae = mean_absolute_error(all_targets, all_preds)
+    r2 = r2_score(all_targets, all_preds)
+
+    return rmse, mae, r2
+
 
 # ==============================
-# TRAINER
+# MAIN TRAINER
 # ==============================
 def train_fusion_model():
-    print("Loading dataset...")
+    print(f"Using device: {config.DEVICE}")
+
+    # Load dataset
+    print("\nLoading dataset...")
     df = pd.read_csv(config.DATA_PATH)
+    print(f"Total samples: {len(df)}")
+
+    # Split data
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+    print(f"Training samples: {len(train_df)}, Validation samples: {len(val_df)}")
 
-    fe = FeatureExtractors()
-    train_vit, train_txt, train_scores = precompute_embeddings(train_df, fe)
-    val_vit, val_txt, val_scores = precompute_embeddings(val_df, fe)
-    
-    # Precompute External Embeddings
-    external_embs = precompute_external_embeddings(fe)
+    # Initialize feature extractors
+    feature_extractors = SequenceFeatureExtractors(
+        vit_path=config.VIT_PATH,
+        roberta_path=config.ROBERTA_PATH,
+        device=config.DEVICE
+    )
 
-    train_ds = FusionDataset(train_vit, train_txt, train_scores)
-    val_ds = FusionDataset(val_vit, val_txt, val_scores)
+    # Create datasets
+    train_dataset = FusionDatasetRaw(
+        df=train_df,
+        image_dir=config.IMAGE_DIR,
+        vit_processor=feature_extractors.vit_processor,
+        tokenizer=feature_extractors.roberta_tokenizer,
+        max_length=config.MAX_TEXT_LENGTH
+    )
+    val_dataset = FusionDatasetRaw(
+        df=val_df,
+        image_dir=config.IMAGE_DIR,
+        vit_processor=feature_extractors.vit_processor,
+        tokenizer=feature_extractors.roberta_tokenizer,
+        max_length=config.MAX_TEXT_LENGTH
+    )
 
-    train_loader = DataLoader(train_ds, batch_size=config.BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=config.BATCH_SIZE, shuffle=False)
+    # Create dataloaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.BATCH_SIZE,
+        shuffle=True,
+        pin_memory=True if config.DEVICE.type == 'cuda' else False
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.BATCH_SIZE,
+        shuffle=False,
+        pin_memory=True if config.DEVICE.type == 'cuda' else False
+    )
 
-    model = MultimodalFusion(dropout=config.DROPOUT).to(config.DEVICE)
-    rec_loss_fn = nn.MSELoss()
-    rel_loss_fn = nn.BCELoss()
-    
-    opt = optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=0.01)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=2)
+    # Initialize fusion model
+    model = MultimodalFusionWithAttention(
+        embed_dim=config.EMBED_DIM,
+        num_heads=config.NUM_HEADS,
+        mlp_hidden_dims=(512, 128, 32),
+        dropout=config.DROPOUT,
+        attention_dropout=config.ATTENTION_DROPOUT
+    ).to(config.DEVICE)
 
-    best_rmse = float("inf")
+    print(f"\nModel parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+    # Loss and optimizer
+    loss_fn = nn.MSELoss()
+    optimizer = optim.AdamW(
+        model.parameters(),
+        lr=config.LEARNING_RATE,
+        weight_decay=0.01
+    )
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer,
+    #     mode='min',
+    #     factor=0.5,
+    #     patience=3,
+    #     verbose=True
+    # )
+
+    best_rmse = float('inf')
+
+    # Training loop
+    print("\n" + "="*50)
+    print("Starting Training with Cross-Modal Attention")
+    print("="*50)
 
     for epoch in range(config.NUM_EPOCHS):
         print(f"\nEpoch {epoch+1}/{config.NUM_EPOCHS}")
-        train_loss = train_epoch(model, train_loader, opt, rec_loss_fn, rel_loss_fn, external_embs)
-        rmse, mae, r2, rel_acc = evaluate(model, val_loader)
-        scheduler.step(rmse)
-        print(f"Train Loss: {train_loss:.5f}")
-        print(f"RMSE: {rmse:.4f} | MAE: {mae:.4f} | R2: {r2:.4f} | Rel Acc (Pos): {rel_acc:.4f}")
 
+        # Train
+        train_loss = train_epoch(
+            model=model,
+            feature_extractors=feature_extractors,
+            loader=train_loader,
+            optimizer=optimizer,
+            loss_fn=loss_fn,
+            device=config.DEVICE
+        )
+
+        # Evaluate
+        rmse, mae, r2 = evaluate(
+            model=model,
+            feature_extractors=feature_extractors,
+            loader=val_loader,
+            device=config.DEVICE
+        )
+
+        # Update scheduler
+        # scheduler.step(rmse)
+
+        # Print metrics
+        print(f"Train Loss: {train_loss:.5f}")
+        print(f"Val RMSE: {rmse:.4f} | MAE: {mae:.4f} | R²: {r2:.4f}")
+
+        # Save best model
         if rmse < best_rmse:
             best_rmse = rmse
-            torch.save(model.state_dict(), config.SAVE_PATH)
+            os.makedirs(os.path.dirname(config.SAVE_PATH), exist_ok=True)
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'rmse': rmse,
+                'mae': mae,
+                'r2': r2,
+                'config': {
+                    'embed_dim': config.EMBED_DIM,
+                    'num_heads': config.NUM_HEADS,
+                    'dropout': config.DROPOUT
+                }
+            }, config.SAVE_PATH)
             print(f"✔ Saved best model (RMSE: {rmse:.4f})")
 
-    print("\nTraining Complete!")
+    print("\n" + "="*50)
+    print(f"Training Complete! Best RMSE: {best_rmse:.4f}")
+    print("="*50)
+
     return model
+
 
 # ==============================
 # MAIN
 # ==============================
 if __name__ == "__main__":
-    print(f"Using device: {config.DEVICE}")
     train_fusion_model()
-
-

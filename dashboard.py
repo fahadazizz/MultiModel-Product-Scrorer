@@ -141,11 +141,11 @@ with tab3:
                         final_score = result['final_score']
                         recommendation = result['recommendation']
                         
-                        # Color coding
-                        color = "green" if final_score >= 0.7 else "orange" if final_score >= 0.5 else "red"
+                        # Color coding (score is now 1-10)
+                        color = "green" if final_score >= 7 else "orange" if final_score >= 4 else "red"
                         
                         st.markdown(f"<h2 style='text-align: center; color: {color};'>{recommendation}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<h3 style='text-align: center;'>Score: {final_score:.3f}</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='text-align: center;'>Score: {final_score:.1f} / 10</h3>", unsafe_allow_html=True)
                         
                         st.divider()
                         
@@ -158,19 +158,23 @@ with tab3:
                             st.subheader("Sentiment")
                             sent = components['sentiment']
                             st.metric("Label", sent['label'])
-                            st.progress(sent['normalized_score'])
+                            norm_score = sent.get('normalized_score', 0.5)
+                            st.progress(float(norm_score))
                             
                         with c2:
                             st.subheader("Image Label")
                             img = components['image']
-                            st.metric("Label", ", ".join(label.strip() for label in img['label'].split(",")[:2]))
-                            st.progress(img['confidence_score'])
+                            label_text = img['label']
+                            if len(label_text) > 30:
+                                label_text = ", ".join(l.strip() for l in label_text.split(",")[:2])
+                            st.metric("Label", label_text)
+                            st.progress(float(img['confidence_score']))
                             
-                        with c3:
-                            st.subheader("Relevance")
-                            rel = components['relevance']
-                            st.metric("Score", f"{rel['score']:.3f}")
-                            st.progress(rel['score'])
+                        # with c3:
+                            # st.subheader("Overall")
+                            # rel = components.get('relevance', {'score': (final_score - 1) / 9})
+                            # st.metric("Score", f"{rel['score']:.3f}")
+                            # st.progress(float(rel['score']))
                                 
                     else:
                         st.error(f"Error: {response.text}")
