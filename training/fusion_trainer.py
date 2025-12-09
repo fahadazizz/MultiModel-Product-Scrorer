@@ -11,7 +11,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from typing import Dict, Any, Optional
-from fusion_models import MultimodalFusionWithAttention
+from fusion_mlp import MultimodalFusionWithAttention
 from transformers import (
     AutoTokenizer,
     RobertaModel,
