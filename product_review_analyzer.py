@@ -79,6 +79,12 @@ class ProductReviewAnalyzer:
                     "image": {
                         "label": "INVALID",
                         "confidence_score": 0
+                    },
+                    "relevance": {
+                        "score": 0,
+                        "is_relevant": False,
+                        "alignment_score": 0,
+                        "shift_score": 0
                     }
                 }
             }
@@ -92,20 +98,33 @@ class ProductReviewAnalyzer:
         print("Extracting text sequence embeddings...")
         text_seq, text_mask = self._extract_text_sequence(reviews)
         
-        print("Computing cross-modal attention and score...")
+        print("Computing cross-modal attention and relevance...")
         with torch.no_grad():
-            normalized_score = self.fusion_model(
+            # Get score AND relevance details
+            normalized_score, relevance_info = self.fusion_model(
                 image_seq=image_seq,
                 text_seq=text_seq,
-                text_attention_mask=text_mask
+                text_attention_mask=text_mask,
+                return_relevance=True
             )
+            
+            # Extract relevance metrics
+            relevance_score = relevance_info['relevance_score'].cpu().item()
+            alignment_score = relevance_info['alignment_score'].cpu().item()
+            shift_score = relevance_info['shift_score'].cpu().item()
+            is_relevant = relevance_info['is_relevant'].cpu().item()
             
             converted_score = 1 + normalized_score.cpu().item() * 9
             final_score = max(1.0, min(10.0, converted_score))
+            
+        # Log relevance details
+        print(f"  Alignment Score: {alignment_score:.4f}")
+        print(f"  Shift Score: {shift_score:.4f}")
+        print(f"  Relevance Score: {relevance_score:.4f} ({'✓ Relevant' if is_relevant else '✗ Not Relevant'})")
 
         result = {
             'final_score': final_score,
-            'recommendation': self._get_recommendation(final_score),
+            'recommendation': self._get_recommendation(final_score, is_relevant),
             'components': {
                 'sentiment': {
                     'label': sentiment_label,
@@ -116,21 +135,27 @@ class ProductReviewAnalyzer:
                     'label': image_label,
                     'confidence_score': max_score
                 },
-                # 'relevance': {
-                #     'score': (final_score - 1) / 9
-                # }
+                'relevance': {
+                    'score': relevance_score,
+                    'is_relevant': bool(is_relevant),
+                    'alignment_score': alignment_score,
+                    'shift_score': shift_score,
+                    'threshold': MultimodalFusionWithAttention.RELEVANCE_THRESHOLD
+                }
             }
         }
         
         print(f"Final Score: {final_score:.2f} - {result['recommendation']}")
         return result
 
-    def _get_recommendation(self, score):
-        if score >= 7:
-            return "Highly Recommended"
-        elif score >= 5:
+    def _get_recommendation(self, score, is_relevant=True):
+        # If not relevant (below threshold), warn the user
+        if not is_relevant:
+            return "Low Relevance - Review may not match image"
+        
+        if score >= 3.5:
             return "Recommended"
-        elif score >= 3:
+        elif score >= 2:
             return "Neutral"
         else:
             return "Not Recommended"

@@ -39,7 +39,7 @@ class SentimentAnalyzer:
         
         return result_scores, predicted_label
     
-    def get_sequence_embeddings(self, text, max_length=128):
+    def get_sequence_embeddings(self, text):
         """
         Extract FULL sequence embeddings from RoBERTa (for Cross-Modal Attention).
         Args:
@@ -55,9 +55,9 @@ class SentimentAnalyzer:
         encoded_input = self.tokenizer(
             text, 
             return_tensors='pt', 
-            padding='max_length', 
+            padding=True, 
             truncation=True, 
-            max_length=max_length
+            # max_length=max_length
         )
 
         with torch.no_grad():

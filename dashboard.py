@@ -141,11 +141,22 @@ with tab3:
                         final_score = result['final_score']
                         recommendation = result['recommendation']
                         
-                        # Color coding (score is now 1-10)
-                        color = "green" if final_score >= 7 else "orange" if final_score >= 4 else "red"
+                        # Check relevance
+                        relevance = result['components'].get('relevance', {})
+                        is_relevant = relevance.get('is_relevant', True)
+                        
+                        # Color coding based on score and relevance
+                        if not is_relevant:
+                            color = "gray"
+                        elif final_score >= 3.5:
+                            color = "green"
+                        elif final_score >= 2:
+                            color = "orange"
+                        else:
+                            color = "red"
                         
                         st.markdown(f"<h2 style='text-align: center; color: {color};'>{recommendation}</h2>", unsafe_allow_html=True)
-                        st.markdown(f"<h3 style='text-align: center;'>Score: {final_score:.1f} / 10</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='text-align: center;'>Score: {final_score:.1f} / 5</h3>", unsafe_allow_html=True)
                         
                         st.divider()
                         
@@ -170,11 +181,22 @@ with tab3:
                             st.metric("Label", label_text)
                             st.progress(float(img['confidence_score']))
                             
-                        # with c3:
-                            # st.subheader("Overall")
-                            # rel = components.get('relevance', {'score': (final_score - 1) / 9})
-                            # st.metric("Score", f"{rel['score']:.3f}")
-                            # st.progress(float(rel['score']))
+                        with c3:
+                            st.subheader("Relevance")
+                            rel = components.get('relevance', {'score': 0.5})
+                            rel_score = rel.get('score', 0.5)
+                            is_rel = rel.get('is_relevant', True)
+                            
+                            # Show relevance status
+                            status = "✓ Match" if is_rel else "⚠ Low"
+                            st.metric("Status", status, delta=f"{rel_score:.2f}")
+                            st.progress(float(rel_score))
+                            
+                            # Show details in expander
+                            with st.expander("Details"):
+                                st.write(f"Alignment: {rel.get('alignment_score', 0):.3f}")
+                                st.write(f"Shift: {rel.get('shift_score', 0):.3f}")
+                                st.write(f"Threshold: {rel.get('threshold', 0.55):.2f}")
                                 
                     else:
                         st.error(f"Error: {response.text}")
